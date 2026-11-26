@@ -12,11 +12,11 @@ static CREDENTIAL_URL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp)://[^/@\s:]+:[^@\s/]+@")
         .expect("credential URL regex")
 });
-static BEARER_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\bBearer\s+[A-Za-z0-9._~+/=-]+").expect("bearer token regex")
+static BEARER_TOKEN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\bBearer\s+[A-Za-z0-9._~+/=-]+").expect("bearer token regex"));
+static OPENAI_KEY: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\b(?:sk|rk)-(?:live-|proj-|test-)?[A-Za-z0-9_-]{12,}").expect("OpenAI key regex")
 });
-static OPENAI_KEY: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b(?:sk|rk)-(?:live-|proj-|test-)?[A-Za-z0-9_-]{12,}").expect("OpenAI key regex"));
 static GITHUB_KEY: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\bgh[pousr]_[A-Za-z0-9]{20,}").expect("GitHub key regex"));
 static AWS_KEY: LazyLock<Regex> =

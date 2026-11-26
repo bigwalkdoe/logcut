@@ -11,12 +11,10 @@ use regex::Regex;
 
 use crate::core::models::CompilerError;
 
-static RUST_HEADER: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^error(?:\[([A-Z]\d+)\])?: (.*)$").expect("rust header regex")
-});
-static RUST_LOCATION: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"-->\s+(.+):(\d+):(\d+)").expect("rust location regex")
-});
+static RUST_HEADER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^error(?:\[([A-Z]\d+)\])?: (.*)$").expect("rust header regex"));
+static RUST_LOCATION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"-->\s+(.+):(\d+):(\d+)").expect("rust location regex"));
 static RUST_SNIPPET: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*\d+\s*\|\s*(.*)$").expect("rust snippet regex"));
 static TSC_PAREN: LazyLock<Regex> = LazyLock::new(|| {
@@ -52,10 +50,7 @@ fn rust_errors(lines: &[&str]) -> Vec<(usize, CompilerError)> {
         };
         let end = headers.get(position + 1).copied().unwrap_or(lines.len());
         let block = &lines[start..end];
-        let Some(span) = block
-            .iter()
-            .find_map(|line| RUST_LOCATION.captures(line))
-        else {
+        let Some(span) = block.iter().find_map(|line| RUST_LOCATION.captures(line)) else {
             continue;
         };
         let notes = block
@@ -184,10 +179,10 @@ fn c_errors(lines: &[&str]) -> Vec<(usize, CompilerError)> {
                     primary_snippet: None,
                 },
             ));
-        } else if C_NOTE.is_match(line) {
-            if let Some(position) = last_error {
-                errors[position].1.notes_collapsed += 1;
-            }
+        } else if C_NOTE.is_match(line)
+            && let Some(position) = last_error
+        {
+            errors[position].1.notes_collapsed += 1;
         }
     }
     errors

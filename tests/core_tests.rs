@@ -20,8 +20,12 @@ use logcut::core::stacktrace::{collapse_vendor_frames, parse_stacktrace, render_
 use logcut::core::{slice_build, slice_log};
 
 fn fixture(name: &str) -> String {
-    fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name))
-        .unwrap_or_else(|error| panic!("fixture {name}: {error}"))
+    fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures")
+            .join(name),
+    )
+    .unwrap_or_else(|error| panic!("fixture {name}: {error}"))
 }
 
 // ---------------------------------------------------------------- Phase 1
@@ -54,14 +58,21 @@ fn redactor_masks_api_keys_and_aws_keys() {
 
 #[test]
 fn redactor_masks_database_urls_but_keeps_host() {
-    let line = "dsn=postgres://deploy:s3cr3t@db.internal:5432/app mysql://root:pw@127.0.0.1:3306/db";
+    let line =
+        "dsn=postgres://deploy:s3cr3t@db.internal:5432/app mysql://root:pw@127.0.0.1:3306/db";
 
     let redacted = redact(line);
 
     assert!(!redacted.contains("s3cr3t"), "{redacted}");
     assert!(!redacted.contains(":pw@"), "{redacted}");
-    assert!(redacted.contains("postgres://<REDACTED>@db.internal:5432/app"), "{redacted}");
-    assert!(redacted.contains("mysql://<REDACTED>@127.0.0.1:3306/db"), "{redacted}");
+    assert!(
+        redacted.contains("postgres://<REDACTED>@db.internal:5432/app"),
+        "{redacted}"
+    );
+    assert!(
+        redacted.contains("mysql://<REDACTED>@127.0.0.1:3306/db"),
+        "{redacted}"
+    );
 }
 
 #[test]
@@ -79,20 +90,32 @@ fn tool_requests_share_json_schema_with_mcp() {
 
     assert!(schema["properties"]["tail_lines"].is_object());
     assert!(schema["properties"]["workspace_root"].is_object());
+
+    let build_schema = serde_json::to_value(schemars::schema_for!(SliceBuildArgs)).unwrap();
+    assert!(build_schema["properties"]["max_errors"].is_object());
+    assert!(build_schema["properties"]["raw_text"].is_object());
 }
 
 fn assert_trace(name: &str, root: &Path, expected_vendor: usize, app_marker: &str) {
     let text = fixture(name);
     let frames = parse_stacktrace(&text, root, false);
-    let vendor = frames.iter().filter(|frame| frame.kind == FrameKind::Vendor).count();
-    let app = frames.iter().filter(|frame| frame.kind == FrameKind::App).count();
+    let vendor = frames
+        .iter()
+        .filter(|frame| frame.kind == FrameKind::Vendor)
+        .count();
+    let app = frames
+        .iter()
+        .filter(|frame| frame.kind == FrameKind::App)
+        .count();
 
     assert_eq!(vendor, expected_vendor, "{name}: {frames:#?}");
     assert!(app > 0, "{name}: no app frames: {frames:#?}");
 
     let collapsed = collapse_vendor_frames(&frames);
     assert!(
-        collapsed.contains(&format!("... [{expected_vendor} framework/runtime frames hidden] ...")),
+        collapsed.contains(&format!(
+            "... [{expected_vendor} framework/runtime frames hidden] ..."
+        )),
         "{name}: {collapsed}"
     );
     assert!(collapsed.contains(app_marker), "{name}: {collapsed}");
@@ -105,12 +128,22 @@ fn rust_trace_collapses_three_vendor_frames() {
 
 #[test]
 fn python_trace_collapses_site_packages_and_stdlib_frames() {
-    assert_trace("python_traceback.txt", Path::new("/app"), 2, "src/worker.py:88");
+    assert_trace(
+        "python_traceback.txt",
+        Path::new("/app"),
+        2,
+        "src/worker.py:88",
+    );
 }
 
 #[test]
 fn node_trace_collapses_node_modules_and_internal_frames() {
-    assert_trace("node_traceback.txt", Path::new("/app"), 2, "src/users.ts:24");
+    assert_trace(
+        "node_traceback.txt",
+        Path::new("/app"),
+        2,
+        "src/users.ts:24",
+    );
 }
 
 #[test]
@@ -120,7 +153,12 @@ fn go_panic_collapses_runtime_and_http_frames() {
 
 #[test]
 fn java_trace_collapses_jdk_and_spring_frames() {
-    assert_trace("java_traceback.txt", Path::new("/app"), 2, "UserController.java:42");
+    assert_trace(
+        "java_traceback.txt",
+        Path::new("/app"),
+        2,
+        "UserController.java:42",
+    );
 }
 
 #[test]
@@ -138,14 +176,18 @@ fn include_vendor_frames_keeps_every_frame() {
 
 #[test]
 fn dedup_normalizes_volatile_tokens() {
-    let normalized = normalize_line("2026-11-27T02:14:02Z ERROR 0xDEADBEEF req_abc123 done in 812ms");
+    let normalized =
+        normalize_line("2026-11-27T02:14:02Z ERROR 0xDEADBEEF req_abc123 done in 812ms");
 
     assert_eq!(normalized, "<TS> ERROR <HEX> <REQID> done in <DUR>");
 }
 
 #[test]
 fn dedup_groups_error_burst_with_first_and_last_timestamps() {
-    let lines: Vec<String> = fixture("noisy_json.log").lines().map(str::to_owned).collect();
+    let lines: Vec<String> = fixture("noisy_json.log")
+        .lines()
+        .map(str::to_owned)
+        .collect();
 
     let groups = group_lines(&lines);
     let connection = groups
@@ -169,7 +211,10 @@ fn source_context_inlines_lines_around_crash_site() {
     fs::create_dir_all(&src).unwrap();
     fs::write(
         src.join("app.rs"),
-        (1..=10).map(|line| format!("line {line}")).collect::<Vec<_>>().join("\n"),
+        (1..=10)
+            .map(|line| format!("line {line}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
     )
     .unwrap();
 
@@ -184,7 +229,10 @@ fn source_context_inlines_lines_around_crash_site() {
     };
 
     let snippet = resolve_frame(dir.path(), &frame, 2).expect("snippet");
-    assert_eq!((snippet.start_line, snippet.end_line, snippet.target_line), (3, 7, 5));
+    assert_eq!(
+        (snippet.start_line, snippet.end_line, snippet.target_line),
+        (3, 7, 5)
+    );
     assert_eq!(snippet.text.lines().count(), 5);
     assert!(render_snippet(&snippet).contains("> 5 | line 5"));
 
@@ -206,7 +254,13 @@ fn tail_text_keeps_only_the_last_lines() {
 fn file_tail_read_never_loads_the_whole_file() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("big.log");
-    fs::write(&path, (1..=5000).map(|line| format!("line {line}\n")).collect::<String>()).unwrap();
+    fs::write(
+        &path,
+        (1..=5000)
+            .map(|line| format!("line {line}\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
 
     let tail = read_log_tail(&path, 10).unwrap();
 
@@ -245,7 +299,10 @@ fn external_commands_are_built_as_argument_arrays() {
         lines: Some(20),
         ..Default::default()
     };
-    assert_eq!(journal_args(&service), ["-u", "api.service", "-n", "20", "--no-pager"]);
+    assert_eq!(
+        journal_args(&service),
+        ["-u", "api.service", "-n", "20", "--no-pager"]
+    );
 }
 
 #[test]
@@ -259,7 +316,9 @@ fn slice_log_redacts_secrets_and_groups_error_bursts() {
 
     assert!(!report.text.contains("s3cr3t"), "{}", report.text);
     assert!(
-        !report.text.contains("sk-test-abcdefghijklmnopqrstuvwxyz123456"),
+        !report
+            .text
+            .contains("sk-test-abcdefghijklmnopqrstuvwxyz123456"),
         "{}",
         report.text
     );
@@ -279,7 +338,13 @@ fn slice_log_collapses_vendor_frames_and_inlines_source() {
     fs::write(
         src.join("handler.rs"),
         (1..=60)
-            .map(|line| if line == 42 { "let conn = connect();".to_owned() } else { format!("// line {line}") })
+            .map(|line| {
+                if line == 42 {
+                    "let conn = connect();".to_owned()
+                } else {
+                    format!("// line {line}")
+                }
+            })
             .collect::<Vec<_>>()
             .join("\n"),
     )
@@ -292,9 +357,17 @@ fn slice_log_collapses_vendor_frames_and_inlines_source() {
     })
     .unwrap();
 
-    assert!(report.text.contains("framework/runtime frames hidden"), "{}", report.text);
+    assert!(
+        report.text.contains("framework/runtime frames hidden"),
+        "{}",
+        report.text
+    );
     assert!(report.text.contains("src/handler.rs:42"), "{}", report.text);
-    assert!(report.text.contains("> 42 | let conn = connect();"), "{}", report.text);
+    assert!(
+        report.text.contains("> 42 | let conn = connect();"),
+        "{}",
+        report.text
+    );
     assert_eq!(report.frames.len(), 5);
     assert!(!report.snippets.is_empty());
 }
@@ -309,7 +382,13 @@ fn slice_log_requires_an_input_source() {
 fn slice_log_respects_tail_and_max_chars_limits() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("many.log");
-    fs::write(&path, (1..=5000).map(|line| format!("ERROR failure number {line}\n")).collect::<String>()).unwrap();
+    fs::write(
+        &path,
+        (1..=5000)
+            .map(|line| format!("ERROR failure number {line}\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
 
     let report = slice_log(SliceLogRequest {
         path: Some(path.to_string_lossy().into_owned()),
@@ -360,10 +439,21 @@ fn mcp_stdio_handshake_initializes_and_lists_tools() {
     let initialized = next_message();
     assert_eq!(initialized["jsonrpc"], "2.0");
     assert_eq!(initialized["id"], 1);
-    assert!(initialized["result"]["serverInfo"]["name"].is_string(), "{initialized}");
+    assert!(
+        initialized["result"]["serverInfo"]["name"].is_string(),
+        "{initialized}"
+    );
 
-    writeln!(stdin, r#"{{"jsonrpc":"2.0","method":"notifications/initialized"}}"#).unwrap();
-    writeln!(stdin, r#"{{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{{}}}}"#).unwrap();
+    writeln!(
+        stdin,
+        r#"{{"jsonrpc":"2.0","method":"notifications/initialized"}}"#
+    )
+    .unwrap();
+    writeln!(
+        stdin,
+        r#"{{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{{}}}}"#
+    )
+    .unwrap();
 
     let listed = loop {
         let message = next_message();
@@ -378,6 +468,7 @@ fn mcp_stdio_handshake_initializes_and_lists_tools() {
         .map(|tool| tool["name"].as_str().expect("tool name"))
         .collect();
     assert!(names.contains(&"slice_log"), "{names:?}");
+    assert!(names.contains(&"slice_build"), "{names:?}");
     assert!(names.contains(&"slice_container"), "{names:?}");
     assert!(names.contains(&"slice_service"), "{names:?}");
 
@@ -393,10 +484,44 @@ fn cli_slice_prints_report_and_stats() {
         .output()
         .expect("run logcut slice");
 
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stdout.contains("[x2"), "{stdout}");
+    assert!(stderr.contains("reduction_percent"), "{stderr}");
+}
+
+#[test]
+fn cli_build_slices_piped_compiler_output() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_logcut"))
+        .args(["build", "--max-errors", "1", "--stats"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run logcut build");
+
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(fixture("rustc_errors.txt").as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stdout.contains("E0277"), "{stdout}");
+    assert!(stdout.contains("trait/note lines collapsed"), "{stdout}");
     assert!(stderr.contains("reduction_percent"), "{stderr}");
 }
 
@@ -409,7 +534,11 @@ fn cli_init_generates_all_host_configs() {
         .output()
         .expect("run logcut init");
 
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     for relative in [
         "opencode.json",
         ".mcp.json",
@@ -419,7 +548,8 @@ fn cli_init_generates_all_host_configs() {
         ".cursor/rules/debug-log.mdc",
     ] {
         let path = dir.path().join(relative);
-        let contents = fs::read_to_string(&path).unwrap_or_else(|error| panic!("{relative}: {error}"));
+        let contents =
+            fs::read_to_string(&path).unwrap_or_else(|error| panic!("{relative}: {error}"));
         if relative.ends_with(".json") {
             assert!(contents.contains("\"logcut\""), "{relative}: {contents}");
             assert!(contents.contains("\"mcp\""), "{relative}: {contents}");
@@ -429,7 +559,8 @@ fn cli_init_generates_all_host_configs() {
     }
 
     let opencode: Value =
-        serde_json::from_str(&fs::read_to_string(dir.path().join("opencode.json")).unwrap()).unwrap();
+        serde_json::from_str(&fs::read_to_string(dir.path().join("opencode.json")).unwrap())
+            .unwrap();
     let server = &opencode["mcp"]["servers"]["logcut"];
     assert_eq!(server["type"], "local");
     assert_eq!(server["command"], serde_json::json!(["logcut", "mcp"]));
@@ -443,7 +574,15 @@ fn agent_advertises_the_core_tools() {
         .iter()
         .map(|tool| tool["function"]["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["slice_log", "slice_container", "slice_service"]);
+    assert_eq!(
+        names,
+        [
+            "slice_log",
+            "slice_build",
+            "slice_container",
+            "slice_service"
+        ]
+    );
 }
 
 // ---------------------------------------------------------------- v0.2.0
@@ -482,12 +621,18 @@ fn slice_build_parses_rustc_trait_bound_wall() {
     assert_eq!(first.line, 42);
     assert_eq!(first.column, Some(18));
     assert!(first.notes_collapsed >= 2, "{first:?}");
-    assert!(first
-        .primary_snippet
-        .as_deref()
-        .unwrap()
-        .contains("serde_json::to_string(user)"));
-    assert!(report.text.contains("trait/note lines collapsed"), "{}", report.text);
+    assert!(
+        first
+            .primary_snippet
+            .as_deref()
+            .unwrap()
+            .contains("serde_json::to_string(user)")
+    );
+    assert!(
+        report.text.contains("trait/note lines collapsed"),
+        "{}",
+        report.text
+    );
     assert!(report.text.contains("> 42 |"), "{}", report.text);
     assert!(!report.snippets.is_empty());
 }
@@ -508,7 +653,11 @@ fn slice_build_deduplicates_tsc_cascades() {
     assert_eq!(first.line, 12);
     assert_eq!(first.column, Some(7));
     assert_eq!(report.cascading_suppressed, 2);
-    assert!(report.text.contains("[x3 cascading occurrences"), "{}", report.text);
+    assert!(
+        report.text.contains("[x3 cascading occurrences"),
+        "{}",
+        report.text
+    );
 }
 
 #[test]
@@ -528,7 +677,11 @@ fn slice_build_parses_go_and_clang_diagnostics() {
     assert_eq!(report.errors[0].kind, CompilerKind::Go);
     assert_eq!(report.errors[0].path, "api/handler.go");
     assert_eq!(report.errors[0].line, 18);
-    assert!(!report.text.contains("# example.com/app/api"), "{}", report.text);
+    assert!(
+        !report.text.contains("# example.com/app/api"),
+        "{}",
+        report.text
+    );
 
     let clang = report
         .errors
@@ -554,7 +707,13 @@ fn slice_build_respects_max_errors_and_redacts_secrets() {
     .unwrap();
 
     assert_eq!(report.errors.len(), 1);
-    assert!(!report.text.contains("sk-test-abcdefghijklmnopqrstuvwxyz123456"), "{}", report.text);
+    assert!(
+        !report
+            .text
+            .contains("sk-test-abcdefghijklmnopqrstuvwxyz123456"),
+        "{}",
+        report.text
+    );
     assert!(report.stats.raw_bytes == raw.len());
 }
 

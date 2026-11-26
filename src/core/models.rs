@@ -15,13 +15,25 @@ pub struct SliceLogRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw_text: Option<String>,
     /// Root used to resolve crashing source files and classify app frames.
-    #[serde(default = "default_workspace_root", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "default_workspace_root",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub workspace_root: Option<String>,
-    #[serde(default = "default_tail_lines", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "default_tail_lines",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub tail_lines: Option<usize>,
-    #[serde(default = "default_context_lines", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "default_context_lines",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub context_lines: Option<usize>,
-    #[serde(default = "default_include_vendor_frames", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "default_include_vendor_frames",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub include_vendor_frames: Option<bool>,
     #[serde(default = "default_max_chars", skip_serializing_if = "Option::is_none")]
     pub max_chars: Option<usize>,
@@ -31,11 +43,17 @@ pub struct SliceLogRequest {
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct SliceContainerRequest {
     pub container: String,
-    #[serde(default = "default_container_tail_lines", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "default_container_tail_lines",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub tail_lines: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub since: Option<String>,
-    #[serde(default = "default_workspace_root", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "default_workspace_root",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub workspace_root: Option<String>,
     #[serde(default = "default_max_chars", skip_serializing_if = "Option::is_none")]
     pub max_chars: Option<usize>,
@@ -45,9 +63,15 @@ pub struct SliceContainerRequest {
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct SliceServiceRequest {
     pub unit: String,
-    #[serde(default = "default_service_lines", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "default_service_lines",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub lines: Option<usize>,
-    #[serde(default = "default_workspace_root", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "default_workspace_root",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub workspace_root: Option<String>,
     #[serde(default = "default_max_chars", skip_serializing_if = "Option::is_none")]
     pub max_chars: Option<usize>,
@@ -201,11 +225,17 @@ pub struct SliceBuildArgs {
     pub path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw_text: Option<String>,
-    #[serde(default = "default_workspace_root", skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_root: Option<String>,
-    #[serde(default = "default_max_errors", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "default_max_errors",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub max_errors: Option<usize>,
-    #[serde(default = "default_context_lines", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "default_context_lines",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub context_lines: Option<usize>,
     #[serde(default = "default_max_chars", skip_serializing_if = "Option::is_none")]
     pub max_chars: Option<usize>,
@@ -220,7 +250,7 @@ impl Default for SliceBuildArgs {
         Self {
             path: None,
             raw_text: None,
-            workspace_root: default_workspace_root(),
+            workspace_root: None,
             max_errors: default_max_errors(),
             context_lines: default_context_lines(),
             max_chars: default_max_chars(),

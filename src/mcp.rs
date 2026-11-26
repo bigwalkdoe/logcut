@@ -9,7 +9,10 @@ use rmcp::{
 
 use crate::core::{
     self,
-    models::{SliceContainerRequest, SliceLogRequest, SliceReport, SliceServiceRequest},
+    models::{
+        SliceBuildArgs, SliceBuildReport, SliceContainerRequest, SliceLogRequest, SliceReport,
+        SliceServiceRequest,
+    },
 };
 
 /// Tool handler shared by every MCP session.
@@ -34,15 +37,36 @@ impl LogcutServer {
 
 #[tool_router]
 impl LogcutServer {
-    #[tool(name = "slice_log", description = "Redact, deduplicate and slice a log file, piped text, or raw log string")]
+    #[tool(
+        name = "slice_log",
+        description = "Redact, deduplicate and slice a log file, piped text, or raw log string"
+    )]
     async fn slice_log(
         &self,
         Parameters(request): Parameters<SliceLogRequest>,
     ) -> Result<Json<SliceReport>, String> {
-        core::slice_log(request).map(Json).map_err(|error| error.to_string())
+        core::slice_log(request)
+            .map(Json)
+            .map_err(|error| error.to_string())
     }
 
-    #[tool(name = "slice_container", description = "Slice Docker container logs with the logcut engine")]
+    #[tool(
+        name = "slice_build",
+        description = "Collapse compiler error cascades into root causes with source context"
+    )]
+    async fn slice_build(
+        &self,
+        Parameters(request): Parameters<SliceBuildArgs>,
+    ) -> Result<Json<SliceBuildReport>, String> {
+        core::slice_build(request)
+            .map(Json)
+            .map_err(|error| error.to_string())
+    }
+
+    #[tool(
+        name = "slice_container",
+        description = "Slice Docker container logs with the logcut engine"
+    )]
     async fn slice_container(
         &self,
         Parameters(request): Parameters<SliceContainerRequest>,
@@ -53,7 +77,10 @@ impl LogcutServer {
             .map_err(|error| error.to_string())
     }
 
-    #[tool(name = "slice_service", description = "Slice a systemd unit's journal with the logcut engine")]
+    #[tool(
+        name = "slice_service",
+        description = "Slice a systemd unit's journal with the logcut engine"
+    )]
     async fn slice_service(
         &self,
         Parameters(request): Parameters<SliceServiceRequest>,
@@ -68,8 +95,9 @@ impl LogcutServer {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for LogcutServer {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions("Slice noisy logs, stacktraces and error bursts down to diagnostic signal.")
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            "Slice noisy logs, stacktraces and error bursts down to diagnostic signal.",
+        )
     }
 }
 

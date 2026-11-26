@@ -15,11 +15,11 @@ use std::path::Path;
 
 use anyhow::{Result, bail};
 
-use models::{
-    FrameKind, SliceBuildArgs, SliceBuildReport, SliceContainerRequest, SliceLogRequest, SliceReport,
-    SliceServiceRequest, SliceStats,
-};
 pub use models::{ErrorGroup, SliceStats as Stats, SourceSnippet, StackFrame, StackLanguage};
+use models::{
+    FrameKind, SliceBuildArgs, SliceBuildReport, SliceContainerRequest, SliceLogRequest,
+    SliceReport, SliceServiceRequest, SliceStats,
+};
 
 /// Slice a file, piped text, or raw string into a compact diagnostic report.
 pub fn slice_log(request: SliceLogRequest) -> Result<SliceReport> {
@@ -61,10 +61,17 @@ pub fn slice_log(request: SliceLogRequest) -> Result<SliceReport> {
     }
     if !snippets.is_empty() {
         let rendered: Vec<String> = snippets.iter().map(source_ctx::render_snippet).collect();
-        sections.push(format!("== Source context ==\n{}", rendered.join("\n").trim_end()));
+        sections.push(format!(
+            "== Source context ==\n{}",
+            rendered.join("\n").trim_end()
+        ));
     }
     if sections.is_empty() && !lines.is_empty() {
-        sections.push(format!("== Log (last {} lines) ==\n{}", lines.len(), lines.join("\n")));
+        sections.push(format!(
+            "== Log (last {} lines) ==\n{}",
+            lines.len(),
+            lines.join("\n")
+        ));
     }
 
     // Source snippets are read from disk, so redact once more over the final
@@ -105,27 +112,31 @@ pub fn slice_log(request: SliceLogRequest) -> Result<SliceReport> {
 /// Slice Docker container logs through the same engine as `slice_log`.
 pub async fn slice_container(request: SliceContainerRequest) -> Result<SliceReport> {
     let raw = sources::docker_logs(&request).await?;
-    slice_log(SliceLogRequest {
-        path: None,
-        raw_text: Some(raw),
-        workspace_root: request.workspace_root,
-        tail_lines: request.tail_lines,
-        ..Default::default()
-    }
-    .with_max_chars(request.max_chars))
+    slice_log(
+        SliceLogRequest {
+            path: None,
+            raw_text: Some(raw),
+            workspace_root: request.workspace_root,
+            tail_lines: request.tail_lines,
+            ..Default::default()
+        }
+        .with_max_chars(request.max_chars),
+    )
 }
 
 /// Slice a systemd unit's journal through the same engine as `slice_log`.
 pub async fn slice_service(request: SliceServiceRequest) -> Result<SliceReport> {
     let raw = sources::journal_logs(&request).await?;
-    slice_log(SliceLogRequest {
-        path: None,
-        raw_text: Some(raw),
-        workspace_root: request.workspace_root,
-        tail_lines: Some(request.lines.unwrap_or(1000)),
-        ..Default::default()
-    }
-    .with_max_chars(request.max_chars))
+    slice_log(
+        SliceLogRequest {
+            path: None,
+            raw_text: Some(raw),
+            workspace_root: request.workspace_root,
+            tail_lines: Some(request.lines.unwrap_or(1000)),
+            ..Default::default()
+        }
+        .with_max_chars(request.max_chars),
+    )
 }
 
 impl SliceLogRequest {
@@ -181,12 +192,10 @@ pub fn slice_build(request: SliceBuildArgs) -> Result<SliceBuildReport> {
             .code
             .as_deref()
             .map_or(String::new(), |code| format!(" {code}"));
-        let location = error
-            .column
-            .map_or_else(
-                || format!("{}:{}", error.path, error.line),
-                |column| format!("{}:{}:{}", error.path, error.line, column),
-            );
+        let location = error.column.map_or_else(
+            || format!("{}:{}", error.path, error.line),
+            |column| format!("{}:{}:{}", error.path, error.line, column),
+        );
         let prefix = if error.count > 1 {
             format!("[x{} cascading occurrences]", error.count)
         } else {

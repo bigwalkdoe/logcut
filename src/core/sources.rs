@@ -77,7 +77,9 @@ pub fn read_log_tail(path: &Path, tail_lines: usize) -> Result<String> {
         return Ok(text);
     }
     // The window ends at a boundary newline; discard the partial line before it.
-    Ok(text.find('\n').map_or(text.clone(), |index| text[index + 1..].to_owned()))
+    Ok(text
+        .find('\n')
+        .map_or(text.clone(), |index| text[index + 1..].to_owned()))
 }
 
 /// Argument array for `docker logs` — never a shell command string.

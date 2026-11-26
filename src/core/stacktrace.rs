@@ -35,7 +35,10 @@ static JAVA_FRAME: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 fn capture(regex: &Regex, line: &str, name: &str) -> Option<String> {
-    regex.captures(line)?.name(name).map(|value| value.as_str().to_owned())
+    regex
+        .captures(line)?
+        .name(name)
+        .map(|value| value.as_str().to_owned())
 }
 
 fn classify(path: &str, function: &str, workspace_root: &Path) -> FrameKind {
@@ -65,8 +68,12 @@ fn classify(path: &str, function: &str, workspace_root: &Path) -> FrameKind {
         "org.springframework.",
     ];
 
-    if VENDOR_PATHS.iter().any(|marker| normalized.contains(marker))
-        || VENDOR_SYMBOLS.iter().any(|prefix| function.starts_with(prefix))
+    if VENDOR_PATHS
+        .iter()
+        .any(|marker| normalized.contains(marker))
+        || VENDOR_SYMBOLS
+            .iter()
+            .any(|prefix| function.starts_with(prefix))
     {
         return FrameKind::Vendor;
     }
@@ -188,7 +195,9 @@ pub fn parse_stacktrace(
         }
 
         let trimmed = line.trim();
-        if trimmed.ends_with("()") && trimmed.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
+        if trimmed.ends_with("()")
+            && trimmed.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+        {
             go_symbol = trimmed.to_owned();
         }
     }
@@ -198,7 +207,9 @@ pub fn parse_stacktrace(
 
 fn push_summary(out: &mut String, hidden: usize) {
     if hidden > 0 {
-        out.push_str(&format!("... [{hidden} framework/runtime frames hidden] ...\n"));
+        out.push_str(&format!(
+            "... [{hidden} framework/runtime frames hidden] ...\n"
+        ));
     }
 }
 
@@ -218,10 +229,16 @@ pub fn collapse_vendor_frames(frames: &[StackFrame]) -> String {
             let frame = &frames[index];
             match (frame.line, frame.column) {
                 (Some(line), Some(column)) if !frame.function.is_empty() => {
-                    out.push_str(&format!("at {} ({}:{}:{})\n", frame.function, frame.path, line, column));
+                    out.push_str(&format!(
+                        "at {} ({}:{}:{})\n",
+                        frame.function, frame.path, line, column
+                    ));
                 }
                 (Some(line), _) if !frame.function.is_empty() => {
-                    out.push_str(&format!("at {} ({}:{})\n", frame.function, frame.path, line));
+                    out.push_str(&format!(
+                        "at {} ({}:{})\n",
+                        frame.function, frame.path, line
+                    ));
                 }
                 _ => out.push_str(&format!("at {}:{}\n", frame.path, frame.line.unwrap_or(0))),
             }
@@ -234,8 +251,7 @@ pub fn collapse_vendor_frames(frames: &[StackFrame]) -> String {
 
 fn is_symbol_line(line: &str) -> bool {
     let trimmed = line.trim();
-    trimmed.starts_with(|c: char| c.is_ascii_digit())
-        && trimmed.contains(':')
+    trimmed.starts_with(|c: char| c.is_ascii_digit()) && trimmed.contains(':')
         || (trimmed.ends_with("()") && !trimmed.starts_with("at "))
 }
 
@@ -250,10 +266,11 @@ pub fn render_stacktrace(text: &str, workspace_root: &Path, include_vendor_frame
     let lines: Vec<&str> = text.lines().collect();
     let mut skip_symbol = vec![false; lines.len()];
     for (index, line) in lines.iter().enumerate() {
-        if index + 1 < lines.len() && is_symbol_line(line) {
-            if let Some(frame) = by_line.get(lines[index + 1].trim()) {
-                skip_symbol[index] = frame.kind == FrameKind::Vendor && !include_vendor_frames;
-            }
+        if index + 1 < lines.len()
+            && is_symbol_line(line)
+            && let Some(frame) = by_line.get(lines[index + 1].trim())
+        {
+            skip_symbol[index] = frame.kind == FrameKind::Vendor && !include_vendor_frames;
         }
     }
 

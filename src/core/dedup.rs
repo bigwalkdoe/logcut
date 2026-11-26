@@ -10,13 +10,16 @@ static ISO_TIMESTAMP: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?")
         .expect("ISO timestamp regex")
 });
-static CLOCK_TIME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b\d{2}:\d{2}:\d{2}\b").expect("clock time regex"));
+static CLOCK_TIME: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\b\d{2}:\d{2}:\d{2}\b").expect("clock time regex"));
 static UUID: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
         .expect("UUID regex")
 });
-static HEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b0x[0-9a-fA-F]+\b").expect("hex regex"));
-static REQUEST_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\breq_[0-9a-fA-F]+\b").expect("request id regex"));
+static HEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\b0x[0-9a-fA-F]+\b").expect("hex regex"));
+static REQUEST_ID: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\breq_[0-9a-fA-F]+\b").expect("request id regex"));
 static DURATION: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\b\d+(?:\.\d+)?\s?(?:ms|µs|us|s)\b").expect("duration regex"));
 
@@ -74,7 +77,7 @@ fn with_commas(count: usize) -> String {
     let digits = count.to_string();
     let mut out = String::with_capacity(digits.len() + digits.len() / 3);
     for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
             out.push(',');
         }
         out.push(digit);
@@ -88,7 +91,10 @@ pub fn format_group(group: &ErrorGroup) -> String {
     // The burst header already carries the timestamps, so a leading <TS>
     // placeholder in the template would be redundant noise.
     let compact = match (&group.first, &group.last) {
-        (Some(_), Some(_)) => group.template.strip_prefix("<TS> ").unwrap_or(&group.template),
+        (Some(_), Some(_)) => group
+            .template
+            .strip_prefix("<TS> ")
+            .unwrap_or(&group.template),
         _ => &group.template,
     };
     match (&group.first, &group.last) {
@@ -113,6 +119,9 @@ mod tests {
     #[test]
     fn singleton_groups_have_no_timestamps() {
         let lines = vec!["ERROR disk full".to_owned()];
-        assert_eq!(format_group(&group_lines(&lines)[0]), "[x1] ERROR disk full");
+        assert_eq!(
+            format_group(&group_lines(&lines)[0]),
+            "[x1] ERROR disk full"
+        );
     }
 }

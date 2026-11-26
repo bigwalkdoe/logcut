@@ -17,10 +17,10 @@ fn relative_path(path: &str, workspace_root: &Path) -> String {
     }
     normalized = normalized.trim_start_matches("./").to_owned();
 
-    if Path::new(&normalized).is_absolute() {
-        if let Ok(stripped) = Path::new(&normalized).strip_prefix(workspace_root) {
-            normalized = stripped.to_string_lossy().replace('\\', "/");
-        }
+    if Path::new(&normalized).is_absolute()
+        && let Ok(stripped) = Path::new(&normalized).strip_prefix(workspace_root)
+    {
+        normalized = stripped.to_string_lossy().replace('\\', "/");
     }
     normalized
 }
@@ -76,10 +76,17 @@ pub fn resolve_frame(
 
 /// Render a snippet with line numbers and a `>` marker on the crashing line.
 pub fn render_snippet(snippet: &SourceSnippet) -> String {
-    let mut out = format!("--- {} ({}:{}) ---\n", snippet.path, snippet.start_line, snippet.end_line);
+    let mut out = format!(
+        "--- {} ({}:{}) ---\n",
+        snippet.path, snippet.start_line, snippet.end_line
+    );
     for (index, line) in snippet.text.lines().enumerate() {
         let number = snippet.start_line + index;
-        let marker = if number == snippet.target_line { '>' } else { ' ' };
+        let marker = if number == snippet.target_line {
+            '>'
+        } else {
+            ' '
+        };
         out.push_str(&format!("{marker} {number} | {line}\n"));
     }
     out

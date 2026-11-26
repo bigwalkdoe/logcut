@@ -10,13 +10,13 @@ use serde_json::{Value, json};
 
 use crate::core::{
     self,
-    models::{SliceContainerRequest, SliceLogRequest, SliceServiceRequest},
+    models::{SliceBuildArgs, SliceContainerRequest, SliceLogRequest, SliceServiceRequest},
 };
 
-const SYSTEM_PROMPT: &str = "You are a debugging assistant. Use logcut tools to inspect logs \
-and stacktraces before answering. Prefer slice_log for files and piped output, \
-slice_container for Docker, and slice_service for systemd journals. Reports are \
-already redacted; never ask the user to paste secrets.";
+const SYSTEM_PROMPT: &str = "You are a debugging assistant. Use logcut tools to inspect logs, \
+stacktraces and compiler output before answering. Prefer slice_log for files and piped output, \
+slice_build for compiler errors, slice_container for Docker, and slice_service for systemd journals. \
+Reports are already redacted; never ask the user to paste secrets.";
 
 fn tool(name: &str, description: &str, schema: schemars::Schema) -> Value {
     let parameters = serde_json::to_value(schema).expect("schema serializes");
@@ -37,6 +37,11 @@ pub fn tool_definitions() -> Vec<Value> {
             "slice_log",
             "Redact, deduplicate and slice a log file, piped text, or raw log string",
             schemars::schema_for!(SliceLogRequest),
+        ),
+        tool(
+            "slice_build",
+            "Collapse compiler error cascades into root causes with source context",
+            schemars::schema_for!(SliceBuildArgs),
         ),
         tool(
             "slice_container",
@@ -80,31 +85,38 @@ struct FunctionCall {
 }
 
 async fn execute_tool(name: &str, arguments: &str, workspace_root: &Path) -> Result<String> {
-    let report = match name {
+    let output = match name {
         "slice_log" => {
             let mut request: SliceLogRequest = serde_json::from_str(arguments)?;
             if request.workspace_root.is_none() {
                 request.workspace_root = Some(workspace_root.to_string_lossy().into_owned());
             }
-            core::slice_log(request)?
+            serde_json::to_string(&core::slice_log(request)?)?
+        }
+        "slice_build" => {
+            let mut request: SliceBuildArgs = serde_json::from_str(arguments)?;
+            if request.workspace_root.is_none() {
+                request.workspace_root = Some(workspace_root.to_string_lossy().into_owned());
+            }
+            serde_json::to_string(&core::slice_build(request)?)?
         }
         "slice_container" => {
             let mut request: SliceContainerRequest = serde_json::from_str(arguments)?;
             if request.workspace_root.is_none() {
                 request.workspace_root = Some(workspace_root.to_string_lossy().into_owned());
             }
-            core::slice_container(request).await?
+            serde_json::to_string(&core::slice_container(request).await?)?
         }
         "slice_service" => {
             let mut request: SliceServiceRequest = serde_json::from_str(arguments)?;
             if request.workspace_root.is_none() {
                 request.workspace_root = Some(workspace_root.to_string_lossy().into_owned());
             }
-            core::slice_service(request).await?
+            serde_json::to_string(&core::slice_service(request).await?)?
         }
         other => bail!("unknown tool: {other}"),
     };
-    Ok(serde_json::to_string(&report)?)
+    Ok(output)
 }
 
 /// Run a bounded tool-using conversation and return the final answer.
@@ -112,8 +124,8 @@ pub async fn ask(question: &str, workspace_root: &Path) -> Result<String> {
     let api_key =
         std::env::var("OPENAI_API_KEY").context("OPENAI_API_KEY is required for `logcut ask`")?;
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".into());
-    let base_url = std::env::var("OPENAI_BASE_URL")
-        .unwrap_or_else(|_| "https://api.openai.com/v1".into());
+    let base_url =
+        std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| "https://api.openai.com/v1".into());
     let client = Client::new();
 
     let mut messages = vec![
@@ -155,7 +167,12 @@ pub async fn ask(question: &str, workspace_root: &Path) -> Result<String> {
             "tool_calls": calls,
         }));
         for call in calls {
-            let output = execute_tool(&call.function.name, &call.function.arguments, workspace_root).await?;
+            let output = execute_tool(
+                &call.function.name,
+                &call.function.arguments,
+                workspace_root,
+            )
+            .await?;
             messages.push(json!({
                 "role": "tool",
                 "tool_call_id": call.id,
