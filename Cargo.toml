@@ -1,6 +1,6 @@
 [package]
 name = "logcut"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Local-first stacktrace & runtime log slicer for AI coding agents and terminal pipelines"
 license = "MIT OR Apache-2.0"
