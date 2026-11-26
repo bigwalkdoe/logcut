@@ -1,0 +1,14 @@
+thread 'main' panicked at src/handler.rs:42:9:
+database connection failed: Connection refused
+
+stack backtrace:
+   0: std::panicking::begin_panic_handler
+             at /rustc/a1b2c3/library/std/src/panicking.rs:690:5
+   1: core::panicking::panic_fmt
+             at /rustc/a1b2c/library/core/src/panicking.rs:75:14
+   2: tokio::runtime::task::poll
+             at /root/.cargo/registry/src/tokio-1.43.0/src/runtime/task/mod.rs:295:9
+   3: logcut::handler::process
+             at ./src/handler.rs:42:9
+   4: logcut::handler::run
+             at ./src/handler.rs:18:5

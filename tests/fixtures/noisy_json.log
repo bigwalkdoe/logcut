@@ -1,0 +1,7 @@
+2026-11-27T02:14:01Z INFO  server listening on 0.0.0.0:8080
+2026-11-27T02:14:02Z INFO  auth header: Authorization: Bearer sk-test-abcdefghijklmnopqrstuvwxyz123456
+2026-11-27T02:14:02Z ERROR Connection refused to 3f2b8c1a-6d0e-4c81-9f5d-21a7b3e9c001
+2026-11-27T02:14:03Z ERROR Connection refused to 9a1c2d3e-7f40-4b52-8e61-33d4a5b6c002
+2026-11-27T02:14:58Z ERROR Connection refused to c4d5e6f7-1234-4a56-8b78-90abcdef1234
+{"level":"error","msg":"db connect failed","dsn":"postgres://deploy:s3cr3t@db.internal:5432/app","elapsed_ms":812}
+{"level":"info","msg":"request finished","request_id":"req_9f8e7d6c","elapsed_ms":17}

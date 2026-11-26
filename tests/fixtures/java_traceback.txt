@@ -1,0 +1,5 @@
+Exception in thread "main" java.lang.NullPointerException: cannot invoke "User.id()" because "user" is null
+	at java.base/java.util.Objects.requireNonNull(Objects.java:233)
+	at org.springframework.web.servlet.FrameworkServlet.doGet(FrameworkServlet.java:903)
+	at com.example.app.UserController.load(UserController.java:42)
+	at com.example.app.Main.main(Main.java:15)

@@ -1,0 +1,11 @@
+panic: runtime error: invalid memory address or nil pointer dereference
+
+goroutine 18 [running]:
+net/http.(*conn).serve.func1()
+	/usr/local/go/src/net/http/server.go:1943 +0xd1
+runtime/debug.Stack()
+	/usr/local/go/src/runtime/debug/stack.go:26 +0x5f
+main.handleRequest()
+	/app/src/server.go:57 +0x1a
+main.main()
+	/app/src/server.go:12 +0x5

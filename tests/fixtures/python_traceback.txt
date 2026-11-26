@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/threading.py", line 1010, in _bootstrap
+  File "/app/.venv/lib/python3.12/site-packages/requests/api.py", line 17, in get
+  File "/app/src/worker.py", line 88, in fetch
+  File "/app/src/worker.py", line 31, in main
+ValueError: invalid literal for int() with base 10: 'oops'

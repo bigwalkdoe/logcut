@@ -1,0 +1,5 @@
+TypeError: Cannot read properties of undefined (reading 'id')
+    at parseUser (webpack-internal:///./src/users.ts:24:15)
+    at node:internal/process/task_queues:140:5
+    at Object.<anonymous> (/app/node_modules/express/lib/router/layer.js:95:5)
+    at async main (/app/src/index.ts:12:3)
