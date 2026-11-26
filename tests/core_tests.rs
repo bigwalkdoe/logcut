@@ -324,10 +324,25 @@ fn slice_log_redacts_secrets_and_groups_error_bursts() {
     );
     assert!(report.text.contains("[x3"), "{}", report.text);
     assert!(report.text.contains("<UUID>"), "{}", report.text);
-    assert_eq!(report.stats.raw_bytes, fixture("noisy_json.log").len());
+    // `tail_text` normalizes CRLF to LF, so compare against normalized fixture bytes.
+    assert_eq!(
+        report.stats.raw_bytes,
+        fixture("noisy_json.log").replace("\r\n", "\n").len()
+    );
     assert!(report.stats.sliced_bytes < report.stats.raw_bytes);
     assert!(report.stats.reduction_percent > 0.0);
     assert!(report.stats.estimated_tokens_saved > 0);
+}
+
+#[test]
+fn slice_log_normalizes_crlf_before_counting_bytes() {
+    let report = slice_log(SliceLogRequest {
+        raw_text: Some("ERROR boom\r\nERROR boom\r\n".to_owned()),
+        ..Default::default()
+    })
+    .unwrap();
+
+    assert_eq!(report.stats.raw_bytes, "ERROR boom\nERROR boom\n".len());
 }
 
 #[test]
