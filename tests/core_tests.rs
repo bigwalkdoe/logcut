@@ -722,3 +722,26 @@ fn slice_build_requires_an_input_source() {
     let error = slice_build(SliceBuildArgs::default()).unwrap_err();
     assert!(error.to_string().contains("path"), "{error}");
 }
+
+#[test]
+fn slice_build_tails_large_build_logs() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("build.log");
+    let raw = format!(
+        "src/old.rs(1,1): error TS2304: old failure\n{}\nsrc/recent.rs(2,2): error TS2304: recent failure\n",
+        "\n".repeat(100)
+    );
+    fs::write(&log, &raw).unwrap();
+
+    let report = slice_build(SliceBuildArgs {
+        path: Some(log.to_string_lossy().into_owned()),
+        tail_lines: Some(2),
+        ..Default::default()
+    })
+    .unwrap();
+
+    assert_eq!(report.errors.len(), 1, "{:?}", report.errors);
+    assert!(report.text.contains("recent failure"), "{}", report.text);
+    assert!(!report.text.contains("old failure"), "{}", report.text);
+    assert!(report.stats.raw_bytes < raw.len());
+}

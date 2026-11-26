@@ -228,6 +228,11 @@ pub struct SliceBuildArgs {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_root: Option<String>,
     #[serde(
+        default = "default_tail_lines",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub tail_lines: Option<usize>,
+    #[serde(
         default = "default_max_errors",
         skip_serializing_if = "Option::is_none"
     )]
@@ -251,6 +256,7 @@ impl Default for SliceBuildArgs {
             path: None,
             raw_text: None,
             workspace_root: None,
+            tail_lines: default_tail_lines(),
             max_errors: default_max_errors(),
             context_lines: default_context_lines(),
             max_chars: default_max_chars(),

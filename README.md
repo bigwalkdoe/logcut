@@ -43,7 +43,7 @@ logcut journal api.service --lines 1000
 logcut ask "why does the worker panic on startup?"
 ```
 
-`--stats` writes JSON size/token statistics to **stderr**, so the report on stdout stays pipe-safe. `--workspace-root` controls which stack frames count as application code and where `path:line` snippets are read from. `build` defaults to 10 root causes (`--max-errors`) and 3 lines of source context (`--context-lines`).
+`--stats` writes JSON size/token statistics to **stderr**, so the report on stdout stays pipe-safe. `--workspace-root` controls which stack frames count as application code and where `path:line` snippets are read from. `build` defaults to 10 root causes (`--max-errors`) and 3 lines of source context (`--context-lines`); when reading a file it tails the last 5,000 lines unless `--tail-lines` says otherwise.
 
 A report looks like:
 

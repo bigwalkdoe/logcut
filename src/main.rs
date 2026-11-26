@@ -70,6 +70,8 @@ struct BuildArgs {
     #[arg(long)]
     workspace_root: Option<String>,
     #[arg(long)]
+    tail_lines: Option<usize>,
+    #[arg(long)]
     max_errors: Option<usize>,
     #[arg(long)]
     context_lines: Option<usize>,
@@ -255,6 +257,7 @@ async fn main() -> Result<()> {
                 path: args.file.map(|path| path.to_string_lossy().into_owned()),
                 raw_text,
                 workspace_root: args.workspace_root,
+                tail_lines: args.tail_lines,
                 max_errors: args.max_errors,
                 context_lines: args.context_lines,
                 max_chars: args.max_chars,

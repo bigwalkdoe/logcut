@@ -151,7 +151,9 @@ impl SliceLogRequest {
 /// Slice compiler diagnostics into root causes with source context.
 pub fn slice_build(request: SliceBuildArgs) -> Result<SliceBuildReport> {
     let raw = match (&request.path, &request.raw_text) {
-        (Some(path), _) => std::fs::read_to_string(path)?,
+        (Some(path), _) => {
+            sources::read_log_tail(Path::new(path), request.tail_lines.unwrap_or(5000))?
+        }
         (None, Some(text)) => text.clone(),
         _ => bail!("provide path or raw_text to build"),
     };
