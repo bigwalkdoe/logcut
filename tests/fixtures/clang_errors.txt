@@ -1,0 +1,4 @@
+src/main.c:10:5: error: implicit declaration of function 'connect_db' [-Wimplicit-function-declaration]
+src/main.c:10:5: note: in expansion of macro 'CONNECT'
+src/main.c:10:5: note: each undeclared identifier is reported only once
+src/main.c:11:3: error: 'conn' undeclared

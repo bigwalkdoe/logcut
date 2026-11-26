@@ -1,0 +1,17 @@
+error[E0277]: the trait bound `User: Serialize` is not satisfied
+   --> src/api.rs:42:18
+    |
+42  |     serde_json::to_string(user)
+    |                  ^^^^^^^^ the trait `Serialize` is not implemented for `User`
+    |
+note: required by a bound in `to_string`
+   --> /rustc/abc123/library/serde_json/src/mod.rs:12:5
+    |
+note: required by a bound introduced by this call
+help: consider annotating `User` with `#[derive(serde::Serialize)]`
+
+error[E0308]: mismatched types
+   --> src/api.rs:57:9
+    |
+57  |     let id: u8 = user.id;
+    |                  ^^^^^^ expected `u8`, found `String`

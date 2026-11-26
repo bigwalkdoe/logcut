@@ -1,0 +1,4 @@
+src/api.ts(12,7): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.
+src/api.ts(12,7): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.
+src/api.ts(19,3): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.
+src/db.ts(8,5): error TS2304: Cannot find name 'connect'.

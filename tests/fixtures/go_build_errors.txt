@@ -1,0 +1,3 @@
+# example.com/app/api
+./api/handler.go:18:12: undefined: config.Timeout
+./api/handler.go:22:9: cannot use result (variable of type string) as int value

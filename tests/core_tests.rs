@@ -10,13 +10,14 @@ use serde_json::Value;
 
 use logcut::core::dedup::{format_group, group_lines, normalize_line};
 use logcut::core::models::{
-    FrameKind, SliceContainerRequest, SliceLogRequest, SliceServiceRequest, StackFrame, StackLanguage,
+    CompilerKind, FrameKind, SliceBuildArgs, SliceContainerRequest, SliceLogRequest,
+    SliceServiceRequest, StackFrame, StackLanguage,
 };
 use logcut::core::redactor::redact;
 use logcut::core::source_ctx::{render_snippet, resolve_frame};
 use logcut::core::sources::{docker_args, journal_args, read_log_tail, tail_text};
 use logcut::core::stacktrace::{collapse_vendor_frames, parse_stacktrace, render_stacktrace};
-use logcut::core::slice_log;
+use logcut::core::{slice_build, slice_log};
 
 fn fixture(name: &str) -> String {
     fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name))
@@ -443,4 +444,122 @@ fn agent_advertises_the_core_tools() {
         .map(|tool| tool["function"]["name"].as_str().unwrap())
         .collect();
     assert_eq!(names, ["slice_log", "slice_container", "slice_service"]);
+}
+
+// ---------------------------------------------------------------- v0.2.0
+
+#[test]
+fn slice_build_parses_rustc_trait_bound_wall() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(
+        src.join("api.rs"),
+        (1..=60)
+            .map(|line| {
+                if line == 42 {
+                    "    serde_json::to_string(user)\n".to_owned()
+                } else {
+                    format!("// line {line}\n")
+                }
+            })
+            .collect::<String>(),
+    )
+    .unwrap();
+
+    let report = slice_build(SliceBuildArgs {
+        raw_text: Some(fixture("rustc_errors.txt")),
+        workspace_root: Some(dir.path().to_string_lossy().into_owned()),
+        ..Default::default()
+    })
+    .unwrap();
+
+    assert_eq!(report.errors.len(), 2, "{:?}", report.errors);
+    let first = &report.errors[0];
+    assert_eq!(first.kind, CompilerKind::Rust);
+    assert_eq!(first.code.as_deref(), Some("E0277"));
+    assert_eq!(first.path, "src/api.rs");
+    assert_eq!(first.line, 42);
+    assert_eq!(first.column, Some(18));
+    assert!(first.notes_collapsed >= 2, "{first:?}");
+    assert!(first
+        .primary_snippet
+        .as_deref()
+        .unwrap()
+        .contains("serde_json::to_string(user)"));
+    assert!(report.text.contains("trait/note lines collapsed"), "{}", report.text);
+    assert!(report.text.contains("> 42 |"), "{}", report.text);
+    assert!(!report.snippets.is_empty());
+}
+
+#[test]
+fn slice_build_deduplicates_tsc_cascades() {
+    let report = slice_build(SliceBuildArgs {
+        raw_text: Some(fixture("tsc_errors.txt")),
+        ..Default::default()
+    })
+    .unwrap();
+
+    assert_eq!(report.errors.len(), 2, "{:?}", report.errors);
+    let first = &report.errors[0];
+    assert_eq!(first.kind, CompilerKind::TypeScript);
+    assert_eq!(first.code.as_deref(), Some("TS2345"));
+    assert_eq!(first.count, 3);
+    assert_eq!(first.line, 12);
+    assert_eq!(first.column, Some(7));
+    assert_eq!(report.cascading_suppressed, 2);
+    assert!(report.text.contains("[x3 cascading occurrences"), "{}", report.text);
+}
+
+#[test]
+fn slice_build_parses_go_and_clang_diagnostics() {
+    let combined = format!(
+        "{}\n{}",
+        fixture("go_build_errors.txt"),
+        fixture("clang_errors.txt")
+    );
+    let report = slice_build(SliceBuildArgs {
+        raw_text: Some(combined),
+        ..Default::default()
+    })
+    .unwrap();
+
+    assert_eq!(report.errors.len(), 4, "{:?}", report.errors);
+    assert_eq!(report.errors[0].kind, CompilerKind::Go);
+    assert_eq!(report.errors[0].path, "api/handler.go");
+    assert_eq!(report.errors[0].line, 18);
+    assert!(!report.text.contains("# example.com/app/api"), "{}", report.text);
+
+    let clang = report
+        .errors
+        .iter()
+        .find(|error| error.kind == CompilerKind::C)
+        .expect("clang error");
+    assert_eq!(clang.path, "src/main.c");
+    assert_eq!(clang.line, 10);
+    assert!(clang.notes_collapsed >= 2, "{clang:?}");
+}
+
+#[test]
+fn slice_build_respects_max_errors_and_redacts_secrets() {
+    let raw = format!(
+        "{}\nerror: Authorization: Bearer sk-test-abcdefghijklmnopqrstuvwxyz123456\n",
+        fixture("rustc_errors.txt")
+    );
+    let report = slice_build(SliceBuildArgs {
+        raw_text: Some(raw.clone()),
+        max_errors: Some(1),
+        ..Default::default()
+    })
+    .unwrap();
+
+    assert_eq!(report.errors.len(), 1);
+    assert!(!report.text.contains("sk-test-abcdefghijklmnopqrstuvwxyz123456"), "{}", report.text);
+    assert!(report.stats.raw_bytes == raw.len());
+}
+
+#[test]
+fn slice_build_requires_an_input_source() {
+    let error = slice_build(SliceBuildArgs::default()).unwrap_err();
+    assert!(error.to_string().contains("path"), "{error}");
 }

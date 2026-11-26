@@ -119,8 +119,10 @@ pub enum StackLanguage {
     Rust,
     Python,
     JavaScript,
+    TypeScript,
     Go,
     Java,
+    C,
 }
 
 /// Whether a frame belongs to the user's workspace or to a framework/runtime.
@@ -180,4 +182,72 @@ pub struct SliceReport {
     pub frames: Vec<StackFrame>,
     pub groups: Vec<ErrorGroup>,
     pub snippets: Vec<SourceSnippet>,
+}
+
+/// Compiler family that produced a diagnostic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum CompilerKind {
+    Rust,
+    TypeScript,
+    Go,
+    C,
+}
+
+/// Parameters for `slice_build`.
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct SliceBuildArgs {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_text: Option<String>,
+    #[serde(default = "default_workspace_root", skip_serializing_if = "Option::is_none")]
+    pub workspace_root: Option<String>,
+    #[serde(default = "default_max_errors", skip_serializing_if = "Option::is_none")]
+    pub max_errors: Option<usize>,
+    #[serde(default = "default_context_lines", skip_serializing_if = "Option::is_none")]
+    pub context_lines: Option<usize>,
+    #[serde(default = "default_max_chars", skip_serializing_if = "Option::is_none")]
+    pub max_chars: Option<usize>,
+}
+
+fn default_max_errors() -> Option<usize> {
+    Some(10)
+}
+
+impl Default for SliceBuildArgs {
+    fn default() -> Self {
+        Self {
+            path: None,
+            raw_text: None,
+            workspace_root: default_workspace_root(),
+            max_errors: default_max_errors(),
+            context_lines: default_context_lines(),
+            max_chars: default_max_chars(),
+        }
+    }
+}
+
+/// One root-cause compiler diagnostic after cascade deduplication.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct CompilerError {
+    pub kind: CompilerKind,
+    pub code: Option<String>,
+    pub message: String,
+    pub path: String,
+    pub line: usize,
+    pub column: Option<usize>,
+    pub count: usize,
+    pub notes_collapsed: usize,
+    pub primary_snippet: Option<String>,
+}
+
+/// Structured result of compiler error cascade slicing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SliceBuildReport {
+    pub text: String,
+    pub stats: SliceStats,
+    pub errors: Vec<CompilerError>,
+    pub snippets: Vec<SourceSnippet>,
+    pub cascading_suppressed: usize,
 }
