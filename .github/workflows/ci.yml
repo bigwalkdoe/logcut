@@ -103,7 +103,7 @@ jobs:
           (Get-FileHash ${{ matrix.archive }} -Algorithm SHA256).Hash.ToLower() + "  ${{ matrix.archive }}" | Out-File -Encoding ascii ${{ matrix.archive }}.sha256
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.target }}
           path: |
