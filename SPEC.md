@@ -56,11 +56,11 @@ version = "0.2.0"
 edition = "2024"
 description = "Local-first stacktrace & runtime log slicer for AI coding agents and terminal pipelines"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/bigwalkdoe/logcut"
-homepage = "https://github.com/bigwalkdoe/logcut"
-documentation = "https://docs.rs/logcut"
 keywords = ["mcp", "logs", "stacktrace", "debugging", "cli"]
 categories = ["command-line-utilities", "development-tools"]
+documentation = "https://docs.rs/logcut"
+repository = "https://github.com/bigwalkdoe/logcut"
+readme = "README.md"
 
 [features]
 default = ["cli", "mcp"]

@@ -8,7 +8,6 @@ keywords = ["mcp", "logs", "stacktrace", "debugging", "cli"]
 categories = ["command-line-utilities", "development-tools"]
 documentation = "https://docs.rs/logcut"
 repository = "https://github.com/bigwalkdoe/logcut"
-homepage = "https://github.com/bigwalkdoe/logcut"
 readme = "README.md"
 
 [features]
