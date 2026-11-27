@@ -125,8 +125,10 @@ The `/debug-log` command created by `logcut init` gives the agent that workflow 
 
 | Feature | Default | Provides |
 | --- | --- | --- |
-| `cli` | yes | `slice`, `build`, `docker`, `journal`, `ask` (`reqwest`) |
+| `cli` | yes | `logcut ask` agent loop (`reqwest`) |
 | `mcp` | yes | `logcut mcp` stdio server (`rmcp`) |
+
+`slice`, `build`, `docker`, `journal`, and `init` are available in every build.
 
 ```bash
 cargo build --no-default-features --features mcp   # MCP-only server
@@ -141,5 +143,7 @@ cargo test
 cargo check --no-default-features --features mcp
 cargo publish --dry-run
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and verification, and [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.

@@ -3,7 +3,7 @@
 ## 1. Mission & Product Identity
 Build **`logcut`**, a high-speed, local-first Rust developer tool for **Stacktrace, Runtime Log & Compiler Error Slicing**.
 `logcut` compiles into a single unified binary that operates in two modes over one shared, pure-Rust core engine:
-1. **MCP Server Mode (`logcut mcp`)**: Exposes structured stacktrace extraction, error burst deduplication, and Docker/systemd log slicing over `stdio` JSON-RPC 2.0 for AI coding hosts (OpenCode, Claude Code, Cursor).
+1. **MCP Server Mode (`logcut mcp`)**: Exposes structured stacktrace extraction, compiler error cascade slicing, error burst deduplication, and Docker/systemd log slicing over `stdio` JSON-RPC 2.0 for AI coding hosts (OpenCode, Claude Code, Cursor).
 2. **Agentic & Pipeline CLI Mode (`logcut slice` / `logcut build` / `logcut docker` / `logcut journal` / `logcut ask`)**: Accepts piped command output (`cargo test 2>&1 | logcut slice`, `cargo build 2>&1 | logcut build`), log files, or container names, compressing thousands of noisy lines into a surgical diagnostic report.
 
 ---
@@ -24,7 +24,12 @@ logcut/
 ├── Cargo.toml
 ├── README.md
 ├── SPEC.md
-├── .github/workflows/ci.yml      # fmt, clippy, tests, MCP-only build, cross-OS release artifacts
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── .gitattributes
+├── .github/ISSUE_TEMPLATE/      # Bug report and feature request forms
+├── .github/dependabot.yml
+├── .github/workflows/ci.yml     # fmt, clippy, tests, MCP-only build, cross-OS release artifacts
 ├── docs/superpowers/plans/      # Implementation plans
 ├── src/
 │   ├── main.rs                  # CLI router (`slice`, `build`, `docker`, `journal`, `ask`, `mcp`, `init`)
@@ -37,7 +42,7 @@ logcut/
 │   │   ├── dedup.rs             # Error clustering & template normalization (timestamps, UUIDs, pointers)
 │   │   ├── stacktrace.rs        # Multi-language panic/traceback parser & vendor-frame filter
 │   │   ├── source_ctx.rs        # Maps surviving app frames (`path:line`) to real source code snippets
-│   │   └── sources.rs           # Safe readers for files, raw text, Docker CLI/socket, & journalctl
+│   │   └── sources.rs           # Safe readers for files, raw text, Docker CLI, & journalctl
 │   ├── mcp.rs                   # rmcp stdio server exposing core tools
 │   └── agent.rs                 # OpenAI-compatible ReAct CLI loop
 └── tests/

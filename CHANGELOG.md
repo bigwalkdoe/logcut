@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `slice_build`: compiler error cascade slicing for `rustc`/`cargo`, `tsc`, `go build`, and `gcc`/`clang`, exposed through MCP, the agent loop, and `logcut build [FILE]` (or piped stdin). Repeated cascades collapse into root causes with occurrence counts and `path:line` source snippets.
 - `.github/workflows/ci.yml`: fmt, clippy, and tests on Linux, macOS, and Windows; an MCP-only build check; and tagged release archives with SHA-256 checksums.
 - Integration fixtures for Rust, TypeScript, Go, and clang compiler errors.
-- README and SPEC updates covering compiler slicing, MCP setup, release artifacts, and feature flags.
+- README updates for compiler slicing and bounded build-log tailing.
 
 ### Changed
 
