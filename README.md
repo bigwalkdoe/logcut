@@ -134,6 +134,15 @@ The `/debug-log` command created by `logcut init` gives the agent that workflow 
 cargo build --no-default-features --features mcp   # MCP-only server
 ```
 
+## Documentation
+
+Start with the [documentation index](docs/README.md):
+
+- [Usage guide](docs/usage.md) — commands, flags, defaults, and examples
+- [MCP and agent reference](docs/mcp.md) — stdio tools, host setup, and `logcut ask`
+- [Architecture guide](docs/architecture.md) — modules, invariants, and extension points
+- [Troubleshooting](docs/troubleshooting.md) — common symptoms and fixes
+
 ## Development
 
 ```bash
