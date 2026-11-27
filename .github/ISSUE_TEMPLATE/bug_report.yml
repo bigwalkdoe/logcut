@@ -1,0 +1,47 @@
+name: Bug report
+description: Report incorrect slicing, redaction, or CLI/MCP behavior
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for the report. Please strip real secrets and private logs before pasting anything here.
+  - type: input
+    id: version
+    attributes:
+      label: logcut version
+      description: Output of `logcut --version`, or the crates.io version you installed.
+      placeholder: logcut 0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Where did it happen?
+      options:
+        - CLI
+        - MCP server
+        - Agent loop (`logcut ask`)
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Include the command or MCP tool call and the unexpected output.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: A minimal command and sample input are ideal; include OS if line endings may matter.
+    validations:
+      required: false

@@ -1,5 +1,10 @@
 # logcut
 
+[![crates.io](https://img.shields.io/crates/v/logcut.svg)](https://crates.io/crates/logcut)
+[![docs.rs](https://docs.rs/logcut/badge.svg)](https://docs.rs/logcut)
+[![CI](https://github.com/bigwalkdoe/logcut/actions/workflows/ci.yml/badge.svg)](https://github.com/bigwalkdoe/logcut/actions/workflows/ci.yml)
+[![license](https://img.shields.io/crates/l/logcut.svg)](https://crates.io/crates/logcut)
+
 Local-first, high-speed **stacktrace, runtime log & compiler error slicing** for AI coding agents and terminal pipelines.
 
 `logcut` is one Rust binary with two interfaces over the same pure-Rust core:
@@ -21,6 +26,8 @@ Or build from source:
 cargo build --release
 ./target/release/logcut --help
 ```
+
+Or grab a prebuilt archive from the [v0.2.0 GitHub release](https://github.com/bigwalkdoe/logcut/releases/tag/v0.2.0): Linux x86_64, macOS x86_64 and aarch64, and Windows x86_64. Each archive has a matching `.sha256` checksum file; unpack it and put the `logcut` binary on your `PATH`.
 
 ## CLI
 
@@ -118,8 +125,10 @@ The `/debug-log` command created by `logcut init` gives the agent that workflow 
 
 | Feature | Default | Provides |
 | --- | --- | --- |
-| `cli` | yes | `slice`, `build`, `docker`, `journal`, `ask` (`reqwest`) |
+| `cli` | yes | `logcut ask` agent loop (`reqwest`) |
 | `mcp` | yes | `logcut mcp` stdio server (`rmcp`) |
+
+`slice`, `build`, `docker`, `journal`, and `init` are available in every build.
 
 ```bash
 cargo build --no-default-features --features mcp   # MCP-only server
@@ -135,4 +144,6 @@ cargo check --no-default-features --features mcp
 cargo publish --dry-run
 ```
 
-Licensed under MIT or Apache-2.0, at your option.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and verification, and [CHANGELOG.md](CHANGELOG.md) for release notes.
+
+Licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
