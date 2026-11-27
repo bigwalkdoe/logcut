@@ -25,11 +25,20 @@ cargo build --no-default-features --features mcp
 
 ## Choosing an input source
 
-`logcut slice` and `logcut build` accept exactly one of:
+`logcut slice` accepts one of:
 
-- **A file path** — `logcut slice app.log` or `logcut build compiler.log`. File input is read from the end in bounded chunks (see [Bounded reads](#bounded-reads-and-output-limits)).
-- **`--raw-text`** — inline text, e.g. `logcut slice --raw-text $'panic at src/main.rs:12'`.
+- **A file path** — `logcut slice app.log`. File input is read from the end in bounded chunks (see [Bounded reads](#bounded-reads-and-output-limits)).
+- **`--raw-text`** — inline text, e.g. `logcut slice --raw-text $'panic at src/main.rs:12'`. If both a file and `--raw-text` are supplied to `slice`, the file takes precedence.
 - **Piped stdin** — when no file and no `--raw-text` are given and stdin is not a terminal, stdin is read to a string: `cargo test 2>&1 | logcut slice`.
+
+`logcut build` accepts a file or piped stdin; it has no `--raw-text` flag:
+
+```bash
+cargo build 2>&1 | logcut build
+logcut build compiler.log
+```
+
+The MCP `slice_build` tool does accept a `raw_text` field; see the [MCP reference](mcp.md#slice_build).
 
 `logcut docker <CONTAINER>` calls `docker logs`; `logcut journal <UNIT>` calls `journalctl`. Both pass arguments as an explicit array — container and unit names are never interpreted by a shell — and the resulting output goes through the same slicer as piped text.
 
@@ -54,7 +63,7 @@ cargo build --no-default-features --features mcp
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--workspace-root <DIR>` | `.` (core default) | Root for resolving compiler `path:line` spans to source snippets. |
-| `--tail-lines <N>` | `5000` | Keep at most the last N lines **when reading a file**; raw text and stdin are not tailed. |
+| `--tail-lines <N>` | `5000` | Keep at most the last N lines **when reading a file**; stdin is not tailed (nor is the MCP tool's `raw_text`). |
 | `--max-errors <N>` | `10` | Maximum number of root-cause errors reported. |
 | `--context-lines <N>` | `3` | Lines of source context on each side of an error span. |
 | `--max-chars <N>` | `12000` | Truncate the rendered report text. |
@@ -98,7 +107,7 @@ Generates MCP config entries and `/debug-log` commands for AI hosts.
 | `--cursor` | Write Cursor config and rule. |
 | `--all` | Write all three sets (same as passing all flags). |
 
-Existing files are left untouched, so rerunning `init` will not overwrite your setup.
+With no flags, `init` writes all three sets. Existing files are left untouched, so rerunning `init` will not overwrite your setup.
 
 ## Four worked examples
 
@@ -131,20 +140,20 @@ With `--stats`, a single JSON line goes to **stderr**:
 
 ## Redaction
 
-Redaction happens before rendering and again over the final text (including source snippets). By default, `logcut`:
+Redaction happens before rendering and again over the final rendered text. By default, `logcut`:
 
 - masks Bearer tokens as `Bearer <REDACTED>`;
 - masks `sk-`/`rk-` OpenAI-style keys, `gh[pousr]_` GitHub tokens, and `AKIA`/`ASIA` AWS access keys;
 - keeps the scheme and host of credential-bearing database URLs (`postgres`, `mysql`, `mongodb`, `redis`, `amqp`) but replaces userinfo with `<REDACTED>@`;
 - masks `api_key`, `access_token`, `password`, and `secret` key/value pairs.
 
-This is deliberate: sliced logs are routinely pasted to an LLM, so credentials are removed even when they appear inside a source snippet.
+This is deliberate: sliced logs are routinely pasted to an LLM. Note that redaction applies to `text`; the structured `snippets` field contains raw source lines and is not redacted, so treat that field as sensitive if your sources hold credentials.
 
 ## Bounded reads and output limits
 
 File input is tailed by seeking backwards in 8 KiB chunks; the reader never seeks from the beginning or allocates the whole file. `tail_lines = 0` produces an empty slice. Container and journal sources apply their own line limits (2,000 and 1,000 by default) before slicing.
 
-`--max-chars` truncates **rendered text only**. Structured result fields (`frames`, `groups`, `errors`, `snippets`) are not truncated, so MCP clients and programmatic callers still receive the full structures; a CLI user sees a `… [truncated]` marker at the cut point. For `slice_build`, the 5,000-line tail applies **only to file input** — inline `--raw-text` and piped output are used as given.
+`--max-chars` truncates **rendered text only**. Structured result fields (`frames`, `groups`, `errors`, `snippets`) are not truncated, so MCP clients and programmatic callers still receive the full structures; a CLI user sees a `… [truncated]` marker at the cut point. For `slice_build`, the 5,000-line tail applies **only to file input** — piped output and the MCP tool's `raw_text` are used as given. The `build` CLI has no `--raw-text` flag.
 
 ## Working with treecut
 

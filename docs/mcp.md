@@ -77,8 +77,8 @@ Result: `SliceReport`.
 
 ### Shared behavior
 
-- **Redaction** runs before rendering and again over the final text, including source snippets: Bearer tokens, `sk-`/`rk-`, GitHub and AWS keys, credential-bearing database URLs, and common `api_key`/`password`/`secret` assignments become `<REDACTED>`.
-- **Source context** is resolved only for application frames, against `workspace_root`; missing or unreadable files simply yield no snippet rather than an error.
+- **Redaction** runs before rendering and again over the final rendered text: Bearer tokens, `sk-`/`rk-`, GitHub and AWS keys, credential-bearing database URLs, and common `api_key`/`password`/`secret` assignments become `<REDACTED>`. Redaction applies to `text`; structured `snippets` are raw source lines and are not redacted, so avoid sharing that field when source files contain credentials.
+- For `slice_log`, source context is resolved only for application frames, against `workspace_root`; missing or unreadable files simply yield no snippet rather than an error. `slice_build` resolves a snippet for each reported compiler error.
 - **`max_chars` truncates `text` only.** Structured fields (`frames`, `groups`, `errors`, `snippets`) are returned in full, and `stats` reports the rendered size.
 
 ### `tools/list` example
@@ -107,6 +107,8 @@ From the root of the repository you want to debug:
 ```bash
 logcut init --all          # or --opencode / --claude / --cursor
 ```
+
+With no flags, `init` writes all three sets.
 
 | Host | Server config | Command / rule |
 | --- | --- | --- |

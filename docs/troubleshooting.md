@@ -4,7 +4,7 @@ Symptom-first fixes for common `logcut` problems. Command details are in the [us
 
 ## No source snippets appear in the report
 
-**Cause.** Source context is resolved only for frames classified as application code, relative to `workspace_root`. If the root is wrong, a path is absolute and cannot be stripped, or the source file is missing, `source_ctx.rs` silently yields no snippet.
+**Cause.** For `slice_log`, source context is resolved only for frames classified as application code, relative to `workspace_root`. If the root is wrong, a path is absolute and cannot be stripped, or the source file is missing, `source_ctx.rs` silently yields no snippet.
 
 **Fix.** Pass the repository root explicitly with `--workspace-root /path/to/repo` (or the `workspace_root` tool field). Check that the path in the log actually exists under that root:
 
@@ -28,9 +28,9 @@ Paths with Windows separators or `file:///` prefixes are normalized before looku
 
 ## Credentials show as `<REDACTED>`
 
-**Cause.** Redaction is deliberate and happens before rendering and again over final text, including source snippets. Bearer tokens, `sk-`/`rk-` and GitHub/AWS keys, database URLs with userinfo, and `api_key`/`password`/`secret` assignments are masked so sliced logs are safe to hand to an LLM or MCP client.
+**Cause.** Redaction is deliberate and happens before rendering and again over the final rendered text. Bearer tokens, `sk-`/`rk-` and GitHub/AWS keys, database URLs with userinfo, and `api_key`/`password`/`secret` assignments are masked so report text is safe to hand to an LLM or MCP client.
 
-**Fix.** This is expected behavior, not a bug. If you need the original value, inspect the source log locally rather than asking `logcut` to reveal it. The surrounding scheme, host, and diagnostic text are preserved so the error remains understandable.
+**Fix.** This is expected behavior, not a bug. Redaction applies to `text`; structured `snippets` contain raw source lines and are not redacted, so treat that field as sensitive if your sources hold credentials. If you need the original value in the report text, inspect the source log locally rather than asking `logcut` to reveal it. The surrounding scheme, host, and diagnostic text are preserved so the error remains understandable.
 
 ## Windows/CRLF logs look odd
 
