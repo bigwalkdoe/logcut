@@ -60,7 +60,7 @@ The MCP `slice_build` tool does accept a `raw_text` field; see the [MCP referenc
 | `--where <FILTER>` | none | Repeatable NDJSON filter such as `status>=500` or `service=auth`; supports `=`, `!=`, `>`, `>=`, `<`, `<=`. Invalid filters fail with an error. |
 | `--stats` | off | Write JSON size/token statistics to stderr. |
 
-NDJSON input is detected automatically when at least half of the non-empty lines are JSON objects with `level` or `message`. Static `pid`, `hostname`, and `v` fields are dropped from nested objects too, secrets are redacted, non-JSON lines are kept as `INFO` context, and errors with a `trace_id` or `request_id` carry up to five earlier `INFO`/`WARN` breadcrumbs from the same request.
+NDJSON input is detected automatically when at least half of the non-empty lines are JSON objects with `level` or `message`. Static `pid`, `hostname`, and `v` fields are dropped from nested objects too, secrets are redacted, non-JSON lines are kept as `INFO` context, and errors with a `trace_id` or `request_id` carry up to five earlier `INFO`/`WARN` breadcrumbs from the same request. `--min-level` names are case-insensitive, but `--where` values are compared case-sensitively against the stored field: bare `where level=error` matches only lowercase `error` values, not `ERROR`.
 
 ### `logcut test [FILE]`
 
@@ -80,10 +80,10 @@ Passing lines from cargo (`... ok`), pytest (`PASSED`), jest/vitest (`✓`, `PAS
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--workspace-root <DIR>` | `.` | Workspace where `.logcut/last-crash.md` is written. |
-| `--ring-lines <N>` | `500` | Maximum streamed lines kept for the crash slice. |
+| `--ring-lines <N>` | `500` | Maximum streamed lines kept for the crash slice. `0` is rejected. |
 | `--max-chars <N>` | `12000` | Truncate the saved crash report text. |
 
-Child stdout/stderr are streamed live. On a detected panic, traceback, `ERROR`/`FATAL` line, or non-zero exit, the buffered tail is sliced and written atomically to `<workspace>/.logcut/last-crash.md`; `.logcut/.gitignore` contains `*` and is written through the same atomic temp-file+rename path.
+Child stdout/stderr are streamed live. On a detected panic, traceback, severity-shaped `ERROR`/`FATAL` line, or non-zero exit, the buffered tail is sliced and written atomically to `<workspace>/.logcut/last-crash.md`; `.logcut/.gitignore` contains `*` and is written through the same atomic temp-file+rename path. Invalid UTF-8 in child output is decoded lossily (replacement characters) so one bad byte cannot erase the rest of a crash report.
 
 ### `logcut build [FILE]`
 

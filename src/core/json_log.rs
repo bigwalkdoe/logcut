@@ -70,7 +70,9 @@ pub fn validate(min_level: Option<&str>, where_filters: &[String]) -> Result<()>
     if let Some(level) = min_level
         && parse_level(level).is_none()
     {
-        bail!("invalid min_level {level:?}; expected trace, debug, info, warn, error, or fatal");
+        bail!(
+            "invalid min_level {level:?}; expected trace, debug, info, warn, warning, error, or fatal"
+        );
     }
     for filter in where_filters {
         if parse_filter(filter).is_none() {
@@ -402,7 +404,9 @@ mod tests {
     #[test]
     fn unknown_min_level_is_rejected() {
         let err = slice("{\"level\":\"info\",\"message\":\"x\"}", Some("loud"), &[]).unwrap_err();
-        assert!(err.to_string().contains("loud"), "{err:#}");
+        let message = err.to_string();
+        assert!(message.contains("loud"), "{err:#}");
+        assert!(message.contains("warning"), "{err:#}");
     }
 
     #[test]

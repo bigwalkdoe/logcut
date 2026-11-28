@@ -106,15 +106,14 @@ pub async fn watch(
     request: WatchRequest,
     mut on_line: Option<LineSink<'_>>,
 ) -> Result<CrashReport> {
+    if request.ring_lines == 0 {
+        bail!("ring_lines must be greater than zero (got 0)");
+    }
     let (program, args) = request
         .command
         .split_first()
         .context("empty watch command: provide a command and its arguments")?;
-    let ring_size = if request.ring_lines == 0 {
-        500
-    } else {
-        request.ring_lines
-    };
+    let ring_size = request.ring_lines;
 
     let mut child = tokio::process::Command::new(program)
         .args(args)
@@ -402,6 +401,24 @@ mod tests {
         let error = watch(WatchRequest::default(), None).await.unwrap_err();
         assert!(
             error.to_string().contains("empty watch command"),
+            "unexpected error: {error:#}"
+        );
+    }
+
+    #[tokio::test]
+    async fn zero_ring_lines_bails() {
+        let error = watch(
+            WatchRequest {
+                command: vec!["sh".into(), "-c".into(), "echo ok".into()],
+                ring_lines: 0,
+                ..Default::default()
+            },
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("ring_lines"),
             "unexpected error: {error:#}"
         );
     }

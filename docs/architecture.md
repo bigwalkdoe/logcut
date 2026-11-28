@@ -58,7 +58,7 @@ None of these transports contains slicing logic. They construct typed request st
 
 `slice_test` tails the input, redacts it, drops passing lines from cargo/pytest/jest/go output, groups the surviving failure blocks, resolves `path:line` references through `source_ctx`, and returns `SliceTestReport { text, stats, failures, passing_lines_stripped }`.
 
-`watch` spawns a command with an argument array, reads stdout and stderr concurrently into a bounded ring buffer, and lets the CLI inject a sink for live pass-through. On a crash marker or non-zero exit it slices the buffered tail with `slice_log` and publishes both `.logcut/last-crash.md` and `.logcut/.gitignore` (containing `*`) through the same atomic temp-file+rename helper. `get_last_crash` reads the report for MCP clients.
+`watch` spawns a command with an argument array, reads stdout and stderr concurrently into a bounded ring buffer, and lets the CLI inject a sink for live pass-through. `ring_lines` must be greater than zero; the core rejects `0` rather than silently substituting the default. On a crash marker (panic, fatal, traceback), a severity-shaped `ERROR`/`FATAL` line, or a non-zero exit it slices the buffered tail with `slice_log` and publishes both `.logcut/last-crash.md` and `.logcut/.gitignore` (containing `*`) through the same atomic temp-file+rename helper. Decoding of child output is lossy for invalid UTF-8. `get_last_crash` reads the report for MCP clients.
 
 Truncation always applies to rendered text only; structured fields are returned in full.
 

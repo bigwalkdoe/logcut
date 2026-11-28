@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -1066,6 +1066,57 @@ fn cli_watch_saves_a_crash_report() {
     );
     let saved = fs::read_to_string(last_crash_path(dir.path())).unwrap();
     assert!(saved.contains("ERROR from child"), "{saved}");
+}
+
+#[test]
+fn cli_watch_rejects_zero_ring_lines() {
+    let output = Command::new(env!("CARGO_BIN_EXE_logcut"))
+        .args(["watch", "--ring-lines", "0", "--", "sh", "-c", "echo ok"])
+        .output()
+        .expect("run logcut watch");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("ring_lines"), "{stderr}");
+}
+
+#[test]
+fn cli_test_raw_text_ignores_piped_stdin() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_logcut"))
+        .args([
+            "test",
+            "--raw-text",
+            "FAILED tests/test_raw.py::test_x - AssertionError: raw\n",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn logcut test");
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match child.try_wait().expect("poll logcut test") {
+            Some(_) => break,
+            None if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+            None => {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("logcut test blocked on stdin despite --raw-text");
+            }
+        }
+    }
+    let output = child
+        .wait_with_output()
+        .expect("collect logcut test output");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("test_raw"), "{stdout}");
 }
 
 #[test]

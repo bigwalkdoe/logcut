@@ -294,7 +294,7 @@ async fn main() -> Result<()> {
             emit(report, cli.stats)
         }
         Commands::Test(args) => {
-            let raw_text = if args.file.is_none() {
+            let raw_text = if args.file.is_none() && args.raw_text.is_none() {
                 piped_stdin()?
             } else {
                 None
