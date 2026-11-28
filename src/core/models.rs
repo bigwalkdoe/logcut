@@ -37,6 +37,12 @@ pub struct SliceLogRequest {
     pub include_vendor_frames: Option<bool>,
     #[serde(default = "default_max_chars", skip_serializing_if = "Option::is_none")]
     pub max_chars: Option<usize>,
+    /// Only keep entries at or above this severity (`trace` … `fatal`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_level: Option<String>,
+    /// Structured filters such as `status>=500` or `service=auth`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub where_filters: Vec<String>,
 }
 
 /// Parameters for `slice_container`.
@@ -109,6 +115,8 @@ impl Default for SliceLogRequest {
             context_lines: default_context_lines(),
             include_vendor_frames: default_include_vendor_frames(),
             max_chars: default_max_chars(),
+            min_level: None,
+            where_filters: Vec::new(),
         }
     }
 }
@@ -198,6 +206,29 @@ pub struct SliceStats {
     pub reduction_percent: f64,
 }
 
+/// One preceding `INFO`/`WARN` line sharing an error's correlation ID.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct JsonBreadcrumb {
+    pub timestamp: Option<String>,
+    pub level: String,
+    pub message: String,
+}
+
+/// A normalized NDJSON log entry after metadata stripping and redaction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct JsonLogEntry {
+    pub timestamp: Option<String>,
+    pub level: String,
+    pub message: String,
+    pub error: Option<String>,
+    pub stack: Option<String>,
+    pub trace_id: Option<String>,
+    pub request_id: Option<String>,
+    /// Extra fields, excluding static metadata (`pid`, `hostname`, `v`).
+    pub fields: std::collections::BTreeMap<String, String>,
+    pub breadcrumbs: Vec<JsonBreadcrumb>,
+}
+
 /// Complete result of a slicing operation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SliceReport {
@@ -206,6 +237,120 @@ pub struct SliceReport {
     pub frames: Vec<StackFrame>,
     pub groups: Vec<ErrorGroup>,
     pub snippets: Vec<SourceSnippet>,
+    /// Populated only when the input was detected as NDJSON.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub json_entries: Vec<JsonLogEntry>,
+}
+
+/// Parameters for `slice_test`.
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct SliceTestArgs {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_text: Option<String>,
+    #[serde(
+        default = "default_workspace_root",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub workspace_root: Option<String>,
+    #[serde(
+        default = "default_tail_lines",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub tail_lines: Option<usize>,
+    #[serde(
+        default = "default_context_lines",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub context_lines: Option<usize>,
+    #[serde(default = "default_max_chars", skip_serializing_if = "Option::is_none")]
+    pub max_chars: Option<usize>,
+}
+
+impl Default for SliceTestArgs {
+    fn default() -> Self {
+        Self {
+            path: None,
+            raw_text: None,
+            workspace_root: default_workspace_root(),
+            tail_lines: default_tail_lines(),
+            context_lines: default_context_lines(),
+            max_chars: default_max_chars(),
+        }
+    }
+}
+
+/// One surviving test failure with its resolved source snippet.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TestFailure {
+    pub name: Option<String>,
+    pub location: Option<String>,
+    pub message: String,
+    pub snippet: Option<SourceSnippet>,
+}
+
+/// Structured result of test-output slicing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SliceTestReport {
+    pub text: String,
+    pub stats: SliceStats,
+    pub failures: Vec<TestFailure>,
+    pub passing_lines_stripped: usize,
+}
+
+/// Parameters for `watch`.
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct WatchRequest {
+    /// Command and arguments, passed as an argument array (never a shell string).
+    pub command: Vec<String>,
+    #[serde(default = "default_workspace_root_string")]
+    pub workspace_root: String,
+    #[serde(default = "default_ring_lines")]
+    pub ring_lines: usize,
+    #[serde(default = "default_max_chars_usize")]
+    pub max_chars: usize,
+}
+
+impl Default for WatchRequest {
+    fn default() -> Self {
+        Self {
+            command: Vec::new(),
+            workspace_root: default_workspace_root_string(),
+            ring_lines: default_ring_lines(),
+            max_chars: default_max_chars_usize(),
+        }
+    }
+}
+
+fn default_workspace_root_string() -> String {
+    ".".into()
+}
+fn default_ring_lines() -> usize {
+    500
+}
+fn default_max_chars_usize() -> usize {
+    12_000
+}
+
+/// Result of a watched command.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct CrashReport {
+    pub text: String,
+    pub path: String,
+    pub exit_code: Option<i32>,
+    pub detected: bool,
+    pub reason: Option<String>,
+}
+
+/// Parameters for `get_last_crash`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct LastCrashRequest {
+    #[serde(
+        default = "default_workspace_root",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub workspace_root: Option<String>,
 }
 
 /// Compiler family that produced a diagnostic.
