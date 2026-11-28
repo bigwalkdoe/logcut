@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.bigwalkdoe/logcut",
+  "title": "logcut",
+  "description": "Local-first stacktrace, runtime log & compiler error slicing for AI coding agents and terminal pipelines.",
+  "repository": {
+    "url": "https://github.com/bigwalkdoe/logcut",
+    "source": "github"
+  },
+  "version": "0.3.0",
+  "packages": [
+    {
+      "registryType": "cargo",
+      "identifier": "logcut",
+      "version": "0.3.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

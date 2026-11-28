@@ -4,6 +4,7 @@
 [![docs.rs](https://docs.rs/logcut/badge.svg)](https://docs.rs/logcut)
 [![CI](https://github.com/bigwalkdoe/logcut/actions/workflows/ci.yml/badge.svg)](https://github.com/bigwalkdoe/logcut/actions/workflows/ci.yml)
 [![license](https://img.shields.io/crates/l/logcut.svg)](https://crates.io/crates/logcut)
+[![logcut MCP server](https://mcprush.com/badge/logcut-mcp/card.svg)](https://mcprush.com/to/logcut-mcp?ref=badge)
 
 Local-first, high-speed **stacktrace, runtime log & compiler error slicing** for AI coding agents and terminal pipelines.
 
@@ -15,6 +16,8 @@ Local-first, high-speed **stacktrace, runtime log & compiler error slicing** for
 Secrets are redacted by default (Bearer tokens, `sk-`/`ghp_`/AWS keys, database URLs). Large files are tailed from the end in bounded chunks; stacktraces from Rust, Python, JS/TS, Go, and Java/JVM lose their vendor frames while surviving app frames are inlined with the exact crashing source lines. Compiler output from `rustc`/`cargo`, `tsc`, `go build`, and `gcc`/`clang` is collapsed into root causes with `path:line` snippets.
 
 Structured NDJSON logs are detected automatically: static `pid`/`hostname`/`v` metadata is dropped, `min_level` and repeatable `--where` filters narrow the stream, and each error carries up to five preceding `INFO`/`WARN` breadcrumbs with the same `trace_id` or `request_id`. Test output from `cargo test`, `pytest`, `jest`/`vitest`, and `go test` loses passing lines while assertion diffs and `file:line` source context survive. `logcut watch -- <COMMAND...>` streams a command and atomically saves the last crash to `.logcut/last-crash.md`.
+
+MCP Registry: `mcp-name: io.github.bigwalkdoe/logcut`
 
 ## Install
 
