@@ -29,7 +29,7 @@ cargo build --release
 ./target/release/logcut --help
 ```
 
-Or grab a prebuilt archive from the [v0.2.0 GitHub release](https://github.com/bigwalkdoe/logcut/releases/tag/v0.2.0): Linux x86_64, macOS x86_64 and aarch64, and Windows x86_64. Each archive has a matching `.sha256` checksum file; unpack it and put the `logcut` binary on your `PATH`.
+Or grab a prebuilt archive from the [v0.3.0 GitHub release](https://github.com/bigwalkdoe/logcut/releases/tag/v0.3.0): Linux x86_64, macOS x86_64 and aarch64, and Windows x86_64. Each archive has a matching `.sha256` checksum file; unpack it and put the `logcut` binary on your `PATH`.
 
 ## CLI
 

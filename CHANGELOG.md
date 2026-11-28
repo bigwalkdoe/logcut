@@ -13,6 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `logcut watch -- <COMMAND...>` streams a child command, keeps a 500-line ring buffer, and atomically writes `.logcut/last-crash.md` plus a `.logcut/.gitignore` containing `*` on a detected crash or non-zero exit.
 - MCP tools `slice_test` and `get_last_crash`, exposed through the same `JsonSchema` contracts as the Rust core.
 
+### Fixed
+
+- Unknown `--min-level` values and malformed `--where` filters now fail with clear core-level validation errors for CLI, MCP, and direct callers.
+- `.logcut/.gitignore` is now written atomically alongside crash reports. `--ring-lines 0` is rejected, invalid `min_level` diagnostics list the accepted `warning` alias, and `logcut test --raw-text` no longer reads piped stdin.
+
 ## [0.2.0] - 2026-11-27
 
 ### Added
