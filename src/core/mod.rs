@@ -26,6 +26,7 @@ use models::{
 
 /// Slice a file, piped text, or raw string into a compact diagnostic report.
 pub fn slice_log(request: SliceLogRequest) -> Result<SliceReport> {
+    json_log::validate(request.min_level.as_deref(), &request.where_filters)?;
     let tail_lines = request.tail_lines.unwrap_or(5000);
     let raw = match (&request.path, &request.raw_text) {
         (Some(path), _) => sources::read_log_tail(Path::new(path), tail_lines)?,

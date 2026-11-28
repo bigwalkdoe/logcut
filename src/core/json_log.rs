@@ -65,28 +65,35 @@ pub fn severity(level: &str) -> u8 {
     parse_level(level).unwrap_or(2)
 }
 
+/// Validate caller-supplied options before any input is classified or sliced.
+pub fn validate(min_level: Option<&str>, where_filters: &[String]) -> Result<()> {
+    if let Some(level) = min_level
+        && parse_level(level).is_none()
+    {
+        bail!("invalid min_level {level:?}; expected trace, debug, info, warn, error, or fatal");
+    }
+    for filter in where_filters {
+        if parse_filter(filter).is_none() {
+            bail!(
+                "invalid where filter {filter:?}; expected field=value, field!=value, field>value, field>=value, field<value, or field<=value"
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Parse, filter and correlate NDJSON lines into normalized entries.
 pub fn slice(
     text: &str,
     min_level: Option<&str>,
     where_filters: &[String],
 ) -> Result<Vec<JsonLogEntry>> {
-    let min_severity = match min_level {
-        Some(level) => match parse_level(level) {
-            Some(value) => Some(value),
-            None => bail!(
-                "invalid min_level {level:?}; expected trace, debug, info, warn, error, or fatal"
-            ),
-        },
-        None => None,
-    };
+    validate(min_level, where_filters)?;
+    let min_severity = min_level.and_then(parse_level);
     let mut filters = Vec::with_capacity(where_filters.len());
     for filter in where_filters {
-        match parse_filter(filter) {
-            Some(parsed) => filters.push(parsed),
-            None => bail!(
-                "invalid where filter {filter:?}; expected field=value, field!=value, field>value, field>=value, field<value, or field<=value"
-            ),
+        if let Some(parsed) = parse_filter(filter) {
+            filters.push(parsed);
         }
     }
 

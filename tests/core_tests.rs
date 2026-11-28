@@ -427,6 +427,64 @@ fn slice_log_respects_tail_and_max_chars_limits() {
     assert!(report.text.len() <= 80, "{}", report.text);
 }
 
+fn mcp_tool_call(tool: &str, arguments: Value) -> Value {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_logcut"))
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn logcut mcp");
+
+    let mut stdin = child.stdin.take().expect("stdin");
+    let reader = std::io::BufReader::new(child.stdout.take().expect("stdout"));
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        for line in reader.lines() {
+            let Ok(line) = line else { break };
+            if sender.send(line).is_err() {
+                break;
+            }
+        }
+    });
+
+    let next_message = || -> Value {
+        let line = receiver
+            .recv_timeout(Duration::from_secs(15))
+            .expect("MCP response timed out");
+        serde_json::from_str(line.trim()).expect("stdout must contain only JSON-RPC messages")
+    };
+
+    writeln!(
+        stdin,
+        r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"2025-06-18","capabilities":{{}},"clientInfo":{{"name":"logcut-test","version":"0.1.0"}}}}}}"#
+    )
+    .unwrap();
+    let _ = next_message();
+    writeln!(
+        stdin,
+        r#"{{"jsonrpc":"2.0","method":"notifications/initialized"}}"#
+    )
+    .unwrap();
+    writeln!(
+        stdin,
+        r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":{tool:?},"arguments":{arguments}}}}}"#
+    )
+    .unwrap();
+
+    let response = loop {
+        let message = next_message();
+        if message["id"] == 2 {
+            break message;
+        }
+    };
+
+    drop(stdin);
+    let _ = child.kill();
+    let _ = child.wait();
+    response
+}
+
 #[test]
 fn mcp_stdio_handshake_initializes_and_lists_tools() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_logcut"))
@@ -520,6 +578,82 @@ fn cli_slice_prints_report_and_stats() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stdout.contains("[x2"), "{stdout}");
     assert!(stderr.contains("reduction_percent"), "{stderr}");
+}
+
+#[test]
+fn core_slice_rejects_unknown_min_level_for_plain_text() {
+    let error = slice_log(SliceLogRequest {
+        raw_text: Some("ERROR boom".to_owned()),
+        min_level: Some("loud".to_owned()),
+        ..Default::default()
+    })
+    .unwrap_err();
+
+    assert!(error.to_string().contains("loud"), "{error:#}");
+}
+
+#[test]
+fn core_slice_rejects_malformed_where_filter_for_plain_text() {
+    let error = slice_log(SliceLogRequest {
+        raw_text: Some("ERROR boom".to_owned()),
+        where_filters: vec!["status".to_owned()],
+        ..Default::default()
+    })
+    .unwrap_err();
+
+    assert!(error.to_string().contains("status"), "{error:#}");
+}
+
+#[test]
+fn cli_slice_rejects_unknown_min_level_for_plain_text() {
+    let output = Command::new(env!("CARGO_BIN_EXE_logcut"))
+        .args(["slice", "--raw-text", "ERROR boom", "--min-level", "loud"])
+        .output()
+        .expect("run logcut slice");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("loud"), "{stderr}");
+}
+
+#[test]
+fn cli_slice_rejects_malformed_where_filter_for_plain_text() {
+    let output = Command::new(env!("CARGO_BIN_EXE_logcut"))
+        .args(["slice", "--raw-text", "ERROR boom", "--where", "status"])
+        .output()
+        .expect("run logcut slice");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("status"), "{stderr}");
+}
+
+#[test]
+fn mcp_slice_log_rejects_unknown_min_level_for_plain_text() {
+    let response = mcp_tool_call(
+        "slice_log",
+        serde_json::json!({"raw_text": "ERROR boom", "min_level": "loud"}),
+    );
+
+    assert_eq!(response["result"]["isError"], true, "{response}");
+    let text = response["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(text.contains("loud"), "{response}");
+}
+
+#[test]
+fn mcp_slice_log_rejects_malformed_where_filter_for_plain_text() {
+    let response = mcp_tool_call(
+        "slice_log",
+        serde_json::json!({"raw_text": "ERROR boom", "where_filters": ["status"]}),
+    );
+
+    assert_eq!(response["result"]["isError"], true, "{response}");
+    let text = response["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(text.contains("status"), "{response}");
 }
 
 #[test]

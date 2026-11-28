@@ -9,19 +9,25 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result, bail};
 use regex::Regex;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::mpsc;
 
 use crate::core::models::{CrashReport, SliceLogRequest, WatchRequest};
 
-/// Severity-style tokens and traceback headers that indicate a crash even
-/// when the child exits successfully. Bare substrings such as `error` are not
-/// enough: `0 errors` and `error-free` are routine successful output.
-static CRASH_LINE: LazyLock<Regex> = LazyLock::new(|| {
+/// Unambiguous crash markers that stay case-insensitive.
+static CRASH_MARKER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r#"(?i)(^|[\s\[({])(panic|fatal|error|assertionerror|segmentation fault)([\]\s:,.;!?]|$)|traceback \(most recent call last\)|"level"\s*:\s*"(error|fatal)""#,
+        r#"(?i)(^|[\s\[({])(panic|fatal|assertionerror|segmentation fault)([\]\s:,.;!?]|$)|traceback \(most recent call last\)|"level"\s*:\s*"(error|fatal)""#,
     )
-    .expect("crash line regex")
+    .expect("crash marker regex")
+});
+
+/// ERROR is severity-shaped only when uppercase or explicitly punctuated as
+/// `Error:`, `error:`, `[error]` or `[ERROR]`. Lowercase prose such as
+/// `no error, all good` and `error count: 0` is not a crash marker.
+static ERROR_SEVERITY: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(^|[\s\[({])ERROR([\]\s:,.;!?]|$)|(^|[\s\[({])(Error|error)(:|\])"#)
+        .expect("error severity regex")
 });
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -62,6 +68,37 @@ fn line_channel(capacity: usize) -> LineChannel {
     mpsc::channel(capacity.max(1))
 }
 
+/// Forward arbitrary child output one line at a time. Invalid UTF-8 is lossy
+/// rather than fatal so one bad byte cannot erase the rest of a crash report.
+async fn forward_lines<R>(
+    reader: R,
+    stream: Stream,
+    tx: mpsc::Sender<LineMessage>,
+) -> std::io::Result<()>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut reader = BufReader::new(reader);
+    let mut bytes = Vec::new();
+    loop {
+        bytes.clear();
+        if reader.read_until(b'\n', &mut bytes).await? == 0 {
+            break;
+        }
+        if bytes.last() == Some(&b'\n') {
+            bytes.pop();
+        }
+        if bytes.last() == Some(&b'\r') {
+            bytes.pop();
+        }
+        let line = String::from_utf8_lossy(&bytes).into_owned();
+        if tx.send((stream, line)).await.is_err() {
+            break;
+        }
+    }
+    Ok(())
+}
+
 /// Run `request.command`, buffering its output and optionally forwarding each
 /// line to the caller's sink. Printing stays in the CLI transport; the core
 /// never writes to stdout or stderr itself.
@@ -91,30 +128,8 @@ pub async fn watch(
 
     let (tx, mut rx) = line_channel(ring_size);
 
-    let stdout_task = tokio::spawn({
-        let tx = tx.clone();
-        async move {
-            let mut lines = BufReader::new(stdout).lines();
-            while let Some(line) = lines.next_line().await? {
-                if tx.send((Stream::Stdout, line)).await.is_err() {
-                    break;
-                }
-            }
-            Ok::<_, std::io::Error>(())
-        }
-    });
-    let stderr_task = tokio::spawn({
-        let tx = tx.clone();
-        async move {
-            let mut lines = BufReader::new(stderr).lines();
-            while let Some(line) = lines.next_line().await? {
-                if tx.send((Stream::Stderr, line)).await.is_err() {
-                    break;
-                }
-            }
-            Ok::<_, std::io::Error>(())
-        }
-    });
+    let stdout_task = tokio::spawn(forward_lines(stdout, Stream::Stdout, tx.clone()));
+    let stderr_task = tokio::spawn(forward_lines(stderr, Stream::Stderr, tx.clone()));
     // Both stream tasks hold a sender; dropping ours lets the drain loop end
     // as soon as they have forwarded every line.
     drop(tx);
@@ -126,7 +141,7 @@ pub async fn watch(
         if let Some(sink) = on_line.as_mut() {
             sink(matches!(stream, Stream::Stderr), &line);
         }
-        if CRASH_LINE.is_match(&line) {
+        if CRASH_MARKER.is_match(&line) || ERROR_SEVERITY.is_match(&line) {
             suspicious_line = true;
         }
         ring.push_back(line);
@@ -303,6 +318,76 @@ mod tests {
         assert!(!report.detected, "{report:?}");
         assert!(report.reason.is_none());
         assert_eq!(report.exit_code, Some(0));
+        assert!(!last_crash_path(dir.path()).exists());
+    }
+
+    #[tokio::test]
+    async fn invalid_utf8_output_does_not_abort_watch() {
+        let dir = tempfile::tempdir().unwrap();
+        let report = watch(
+            WatchRequest {
+                command: vec![
+                    "sh".into(),
+                    "-c".into(),
+                    "printf '\\377ERROR boom\\n'; exit 3".into(),
+                ],
+                workspace_root: dir.path().to_str().unwrap().to_owned(),
+                ..Default::default()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(report.detected, "{report:?}");
+        assert_eq!(report.exit_code, Some(3));
+        let saved = std::fs::read_to_string(last_crash_path(dir.path())).unwrap();
+        assert!(saved.contains("ERROR boom"), "saved report: {saved}");
+    }
+
+    #[tokio::test]
+    async fn benign_no_error_line_with_zero_exit_leaves_no_crash_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let report = watch(
+            WatchRequest {
+                command: vec![
+                    "sh".into(),
+                    "-c".into(),
+                    "echo 'no error, all good'; exit 0".into(),
+                ],
+                workspace_root: dir.path().to_str().unwrap().to_owned(),
+                ..Default::default()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(!report.detected, "{report:?}");
+        assert!(report.reason.is_none());
+        assert!(!last_crash_path(dir.path()).exists());
+    }
+
+    #[tokio::test]
+    async fn benign_error_count_zero_with_zero_exit_leaves_no_crash_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let report = watch(
+            WatchRequest {
+                command: vec![
+                    "sh".into(),
+                    "-c".into(),
+                    "echo 'error count: 0'; exit 0".into(),
+                ],
+                workspace_root: dir.path().to_str().unwrap().to_owned(),
+                ..Default::default()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(!report.detected, "{report:?}");
+        assert!(report.reason.is_none());
         assert!(!last_crash_path(dir.path()).exists());
     }
 
