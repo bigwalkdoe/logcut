@@ -5,11 +5,14 @@
 
 pub mod compiler;
 pub mod dedup;
+pub mod json_log;
 pub mod models;
 pub mod redactor;
 pub mod source_ctx;
 pub mod sources;
 pub mod stacktrace;
+pub mod test_runner;
+pub mod watch;
 
 use std::path::Path;
 
@@ -31,6 +34,45 @@ pub fn slice_log(request: SliceLogRequest) -> Result<SliceReport> {
     };
 
     let redacted = redactor::redact(&raw);
+    if json_log::is_ndjson(&redacted) {
+        let entries = json_log::slice(
+            &redacted,
+            request.min_level.as_deref(),
+            &request.where_filters,
+        );
+        let mut text = redactor::redact(&json_log::render(&entries));
+        let max_chars = request.max_chars.unwrap_or(12_000);
+        if text.len() > max_chars {
+            let marker = "\n… [truncated]";
+            let budget = max_chars.saturating_sub(marker.len()).min(text.len());
+            let mut cut = budget;
+            while !text.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            text = format!("{}{marker}", &text[..cut]);
+        }
+        let raw_bytes = raw.len();
+        let sliced_bytes = text.len();
+        let saved = raw_bytes.saturating_sub(sliced_bytes);
+        return Ok(SliceReport {
+            text,
+            stats: SliceStats {
+                raw_bytes,
+                sliced_bytes,
+                estimated_tokens_saved: saved / 4,
+                reduction_percent: if raw_bytes == 0 {
+                    0.0
+                } else {
+                    saved as f64 / raw_bytes as f64 * 100.0
+                },
+            },
+            frames: Vec::new(),
+            groups: Vec::new(),
+            snippets: Vec::new(),
+            json_entries: entries,
+        });
+    }
+
     let lines: Vec<String> = redacted.lines().map(str::to_owned).collect();
     let groups = dedup::group_lines(&lines);
 
@@ -106,7 +148,13 @@ pub fn slice_log(request: SliceLogRequest) -> Result<SliceReport> {
         frames,
         groups,
         snippets,
+        json_entries: Vec::new(),
     })
+}
+
+/// Slice test output into failures with source context.
+pub fn slice_test(request: models::SliceTestArgs) -> Result<models::SliceTestReport> {
+    test_runner::slice(request)
 }
 
 /// Slice Docker container logs through the same engine as `slice_log`.

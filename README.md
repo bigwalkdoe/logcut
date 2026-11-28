@@ -9,10 +9,12 @@ Local-first, high-speed **stacktrace, runtime log & compiler error slicing** for
 
 `logcut` is one Rust binary with two interfaces over the same pure-Rust core:
 
-- **`logcut mcp`** — an MCP stdio server exposing `slice_log`, `slice_build`, `slice_container`, and `slice_service`.
-- **`logcut slice` / `build` / `docker` / `journal` / `ask`** — a CLI that compresses thousands of noisy lines into a surgical diagnostic report.
+- **`logcut mcp`** — an MCP stdio server exposing `slice_log`, `slice_test`, `slice_build`, `slice_container`, `slice_service`, and `get_last_crash`.
+- **`logcut slice` / `test` / `watch` / `build` / `docker` / `journal` / `ask`** — a CLI that compresses thousands of noisy lines into a surgical diagnostic report.
 
 Secrets are redacted by default (Bearer tokens, `sk-`/`ghp_`/AWS keys, database URLs). Large files are tailed from the end in bounded chunks; stacktraces from Rust, Python, JS/TS, Go, and Java/JVM lose their vendor frames while surviving app frames are inlined with the exact crashing source lines. Compiler output from `rustc`/`cargo`, `tsc`, `go build`, and `gcc`/`clang` is collapsed into root causes with `path:line` snippets.
+
+Structured NDJSON logs are detected automatically: static `pid`/`hostname`/`v` metadata is dropped, `min_level` and repeatable `--where` filters narrow the stream, and each error carries up to five preceding `INFO`/`WARN` breadcrumbs with the same `trace_id` or `request_id`. Test output from `cargo test`, `pytest`, `jest`/`vitest`, and `go test` loses passing lines while assertion diffs and `file:line` source context survive. `logcut watch -- <COMMAND...>` streams a command and atomically saves the last crash to `.logcut/last-crash.md`.
 
 ## Install
 
@@ -37,6 +39,16 @@ cargo test 2>&1 | logcut slice --stats
 
 # Slice a file, keeping 10 lines of context around crashing frames
 logcut slice /var/log/app.log --context-lines 10 --stats
+
+# Keep only structured WARN+ entries for one service with HTTP 5xx status
+logcut slice app.ndjson --min-level warn --where 'status>=500' --where 'service=auth'
+
+# Strip passing test lines and keep only failures with source context
+cargo test 2>&1 | logcut test --stats
+logcut test pytest-output.txt --workspace-root /path/to/repo
+
+# Watch a command live and save its last crash report
+logcut watch --workspace-root /path/to/repo -- cargo test
 
 # Collapse compiler error walls into root causes (rustc, tsc, go build, gcc/clang)
 cargo build 2>&1 | logcut build --stats
@@ -103,12 +115,14 @@ Existing files are left untouched. Each config launches `logcut mcp` over stdio;
 
 | Tool | Input | Result |
 | --- | --- | --- |
-| `slice_log` | file path or raw text | deduplicated errors, stack frames, source context |
+| `slice_log` | file path or raw text | deduplicated errors, stack frames, source context, NDJSON entries with breadcrumbs |
+| `slice_test` | test log path or raw text | failures with assertion diffs and source context |
 | `slice_build` | build log path or raw text | root-cause compiler errors, collapsed cascades, source context |
 | `slice_container` | container name | sliced Docker logs |
 | `slice_service` | systemd unit | sliced journal logs |
+| `get_last_crash` | workspace root | the markdown report written by `logcut watch` |
 
-All four tools accept an optional `workspace_root` for resolving `path:line` snippets.
+All tools accept an optional `workspace_root` for resolving `path:line` snippets. `slice_log` additionally accepts `min_level` and `where_filters` for NDJSON streams.
 
 ## Working with treecut
 
@@ -128,7 +142,7 @@ The `/debug-log` command created by `logcut init` gives the agent that workflow 
 | `cli` | yes | `logcut ask` agent loop (`reqwest`) |
 | `mcp` | yes | `logcut mcp` stdio server (`rmcp`) |
 
-`slice`, `build`, `docker`, `journal`, and `init` are available in every build.
+`slice`, `test`, `watch`, `build`, `docker`, `journal`, and `init` are available in every build.
 
 ```bash
 cargo build --no-default-features --features mcp   # MCP-only server

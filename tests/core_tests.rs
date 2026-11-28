@@ -11,13 +11,14 @@ use serde_json::Value;
 use logcut::core::dedup::{format_group, group_lines, normalize_line};
 use logcut::core::models::{
     CompilerKind, FrameKind, SliceBuildArgs, SliceContainerRequest, SliceLogRequest,
-    SliceServiceRequest, StackFrame, StackLanguage,
+    SliceServiceRequest, SliceTestArgs, StackFrame, StackLanguage, WatchRequest,
 };
 use logcut::core::redactor::redact;
 use logcut::core::source_ctx::{render_snippet, resolve_frame};
 use logcut::core::sources::{docker_args, journal_args, read_log_tail, tail_text};
 use logcut::core::stacktrace::{collapse_vendor_frames, parse_stacktrace, render_stacktrace};
-use logcut::core::{slice_build, slice_log};
+use logcut::core::watch::{last_crash_path, read_last_crash, watch};
+use logcut::core::{slice_build, slice_log, slice_test};
 
 fn fixture(name: &str) -> String {
     fs::read_to_string(
@@ -94,6 +95,15 @@ fn tool_requests_share_json_schema_with_mcp() {
     let build_schema = serde_json::to_value(schemars::schema_for!(SliceBuildArgs)).unwrap();
     assert!(build_schema["properties"]["max_errors"].is_object());
     assert!(build_schema["properties"]["raw_text"].is_object());
+
+    let log_schema = serde_json::to_value(schemars::schema_for!(SliceLogRequest)).unwrap();
+    assert!(log_schema["properties"]["min_level"].is_object());
+    assert!(log_schema["properties"]["where_filters"].is_object());
+
+    let test_schema = serde_json::to_value(schemars::schema_for!(SliceTestArgs)).unwrap();
+    assert!(test_schema["properties"]["workspace_root"].is_object());
+    let watch_schema = serde_json::to_value(schemars::schema_for!(WatchRequest)).unwrap();
+    assert!(watch_schema["properties"]["command"].is_object());
 }
 
 fn assert_trace(name: &str, root: &Path, expected_vendor: usize, app_marker: &str) {
@@ -483,6 +493,8 @@ fn mcp_stdio_handshake_initializes_and_lists_tools() {
         .map(|tool| tool["name"].as_str().expect("tool name"))
         .collect();
     assert!(names.contains(&"slice_log"), "{names:?}");
+    assert!(names.contains(&"slice_test"), "{names:?}");
+    assert!(names.contains(&"get_last_crash"), "{names:?}");
     assert!(names.contains(&"slice_build"), "{names:?}");
     assert!(names.contains(&"slice_container"), "{names:?}");
     assert!(names.contains(&"slice_service"), "{names:?}");
@@ -759,4 +771,187 @@ fn slice_build_tails_large_build_logs() {
     assert!(report.text.contains("recent failure"), "{}", report.text);
     assert!(!report.text.contains("old failure"), "{}", report.text);
     assert!(report.stats.raw_bytes < raw.len());
+}
+
+// ---------------------------------------------------------------- v0.3.0
+
+#[test]
+fn ndjson_slice_log_filters_and_correlates_trace_ids() {
+    let raw = [
+        r#"{"timestamp":"t1","level":"info","message":"authorized","service":"auth","trace_id":"tr_1","pid":11,"hostname":"worker-1","v":3}"#,
+        r#"{"timestamp":"t2","level":"warn","message":"slow token refresh","service":"auth","trace_id":"tr_1","pid":11,"v":3}"#,
+        r#"{"timestamp":"t3","level":"error","message":"Authorization: Bearer abcdefghijklmnopqrstuvwxyz","service":"auth","trace_id":"tr_1","pid":11,"v":3}"#,
+        r#"{"timestamp":"t4","level":"error","message":"unrelated failure","service":"billing","trace_id":"tr_2"}"#,
+    ]
+    .join("\n");
+
+    let report = slice_log(SliceLogRequest {
+        raw_text: Some(raw),
+        min_level: Some("error".into()),
+        where_filters: vec!["service=auth".into()],
+        ..Default::default()
+    })
+    .unwrap();
+
+    assert_eq!(report.json_entries.len(), 1, "{:?}", report.json_entries);
+    let entry = &report.json_entries[0];
+    assert_eq!(entry.level, "ERROR");
+    assert_eq!(entry.trace_id.as_deref(), Some("tr_1"));
+    assert_eq!(entry.breadcrumbs.len(), 2);
+    assert_eq!(entry.breadcrumbs[0].message, "authorized");
+    assert_eq!(entry.breadcrumbs[1].message, "slow token refresh");
+    assert!(
+        report.text.contains("== Structured logs =="),
+        "{}",
+        report.text
+    );
+    assert!(report.text.contains("breadcrumbs:"), "{}", report.text);
+    assert!(report.text.contains("Bearer <REDACTED>"), "{}", report.text);
+    assert!(
+        !report.text.contains("abcdefghijklmnopqrstuvwxyz"),
+        "{}",
+        report.text
+    );
+    assert!(!report.text.contains("worker-1"), "{}", report.text);
+    assert!(
+        !report.text.contains("unrelated failure"),
+        "{}",
+        report.text
+    );
+    assert!(!report.text.contains("\"pid\""), "{}", report.text);
+}
+
+#[test]
+fn slice_test_strips_passing_lines_and_keeps_diffs() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("lib.rs"), "one\ntwo\nassert_eq!(1, 2);\nfour\n").unwrap();
+
+    let raw = [
+        "test good_case ... ok",
+        "test result: ok. 1 passed; 0 failed",
+        "test_ok PASSED",
+        "✓ adds two numbers",
+        "PASS suite/auth.test.ts",
+        "ok  \texample.com/pkg\t0.01s",
+        "thread 'bad_case' panicked at src/lib.rs:3:5:",
+        "assertion `left == right` failed",
+        "  left: 1",
+        " right: 2",
+    ]
+    .join("\n");
+
+    let report = slice_test(SliceTestArgs {
+        raw_text: Some(raw),
+        workspace_root: Some(dir.path().to_string_lossy().into_owned()),
+        context_lines: Some(1),
+        ..Default::default()
+    })
+    .unwrap();
+
+    assert_eq!(report.passing_lines_stripped, 6);
+    assert_eq!(report.failures.len(), 1, "{:?}", report.failures);
+    for marker in ["... ok", "PASSED", "✓", "PASS ", "ok  \t"] {
+        assert!(
+            !report.text.contains(marker),
+            "leaked {marker:?}: {}",
+            report.text
+        );
+    }
+    assert!(report.text.contains("  left: 1"), "{}", report.text);
+    assert!(report.text.contains(" right: 2"), "{}", report.text);
+    assert!(
+        report.text.contains("== Source context =="),
+        "{}",
+        report.text
+    );
+    assert!(
+        report.text.contains("> 3 | assert_eq!(1, 2);"),
+        "{}",
+        report.text
+    );
+}
+
+#[tokio::test]
+async fn watch_writes_last_crash_report_atomically() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace_root = dir.path().to_string_lossy().into_owned();
+
+    let report = watch(
+        WatchRequest {
+            command: vec!["sh".into(), "-c".into(), "echo 'ERROR boom'; exit 3".into()],
+            workspace_root: workspace_root.clone(),
+            ..Default::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert!(report.detected);
+    assert_eq!(report.exit_code, Some(3));
+    let path = last_crash_path(dir.path());
+    assert!(path.exists());
+    let saved = fs::read_to_string(&path).unwrap();
+    assert_eq!(saved, report.text);
+    assert!(saved.contains("ERROR boom"), "{saved}");
+    assert_eq!(
+        fs::read_to_string(dir.path().join(".logcut/.gitignore")).unwrap(),
+        "*"
+    );
+    assert_eq!(read_last_crash(dir.path()).unwrap(), saved);
+    let leftovers: Vec<_> = fs::read_dir(dir.path().join(".logcut"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.contains("tmp"))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+#[test]
+fn cli_watch_saves_a_crash_report() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_logcut"))
+        .args([
+            "watch",
+            "--workspace-root",
+            dir.path().to_str().unwrap(),
+            "--",
+            "sh",
+            "-c",
+            "echo 'ERROR from child'; exit 4",
+        ])
+        .output()
+        .expect("run logcut watch");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let saved = fs::read_to_string(last_crash_path(dir.path())).unwrap();
+    assert!(saved.contains("ERROR from child"), "{saved}");
+}
+
+#[test]
+fn cli_test_prints_only_failures() {
+    let output = Command::new(env!("CARGO_BIN_EXE_logcut"))
+        .args([
+            "test",
+            "--raw-text",
+            "test good ... ok\nFAILED tests/test_x.py::test_bad - AssertionError: nope\n",
+        ])
+        .output()
+        .expect("run logcut test");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains("... ok"), "{stdout}");
+    assert!(stdout.contains("test_bad"), "{stdout}");
+    assert!(stdout.contains("AssertionError"), "{stdout}");
 }

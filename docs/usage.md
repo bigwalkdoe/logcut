@@ -17,7 +17,7 @@ Prebuilt archives for Linux x86_64, macOS x86_64/aarch64, and Windows x86_64 are
 | `cli` | yes | `logcut ask` (pulls in `reqwest`) |
 | `mcp` | yes | `logcut mcp` (pulls in `rmcp`) |
 
-`slice`, `build`, `docker`, `journal`, and `init` are available in every build. To build an MCP-only server:
+`slice`, `test`, `watch`, `build`, `docker`, `journal`, and `init` are available in every build. To build an MCP-only server:
 
 ```bash
 cargo build --no-default-features --features mcp
@@ -56,7 +56,34 @@ The MCP `slice_build` tool does accept a `raw_text` field; see the [MCP referenc
 | `--context-lines <N>` | `3` | Lines of source context on each side of a crashing frame. |
 | `--include-vendor-frames` | off | Keep framework/runtime frames instead of collapsing consecutive runs. |
 | `--max-chars <N>` | `12000` | Truncate the rendered report text to roughly N characters. |
+| `--min-level <LEVEL>` | none | For NDJSON input, keep only entries at or above `trace`, `debug`, `info`, `warn`, or `error`. |
+| `--where <FILTER>` | none | Repeatable NDJSON filter such as `status>=500` or `service=auth`; supports `=`, `!=`, `>`, `>=`, `<`, `<=`. |
 | `--stats` | off | Write JSON size/token statistics to stderr. |
+
+NDJSON input is detected automatically when most non-empty lines are JSON objects with `level` or `message`. Static `pid`, `hostname`, and `v` fields are dropped, secrets are redacted, and errors with a `trace_id` or `request_id` carry up to five earlier `INFO`/`WARN` breadcrumbs from the same request.
+
+### `logcut test [FILE]`
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--raw-text <TEXT>` | none | Slice literal test output instead of a file or stdin. |
+| `--workspace-root <DIR>` | `.` | Root used to resolve failure `path:line` spans to source snippets. |
+| `--tail-lines <N>` | `5000` | Keep at most the last N lines when reading a file. |
+| `--context-lines <N>` | `3` | Source lines on each side of a failure. |
+| `--max-chars <N>` | `12000` | Truncate the rendered report text. |
+| `--stats` | off | Write JSON size/token statistics to stderr. |
+
+Passing lines from cargo (`... ok`), pytest (`PASSED`), jest/vitest (`✓`, `PASS `), and go test (`ok  \tpkg`) are removed; failure summaries, assertion diffs, and source snippets survive.
+
+### `logcut watch -- <COMMAND...>`
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--workspace-root <DIR>` | `.` | Workspace where `.logcut/last-crash.md` is written. |
+| `--ring-lines <N>` | `500` | Maximum streamed lines kept for the crash slice. |
+| `--max-chars <N>` | `12000` | Truncate the saved crash report text. |
+
+Child stdout/stderr are streamed live. On a detected panic, traceback, `ERROR`/`FATAL` line, or non-zero exit, the buffered tail is sliced and written atomically to `<workspace>/.logcut/last-crash.md`; `.logcut/.gitignore` contains `*`.
 
 ### `logcut build [FILE]`
 
@@ -128,7 +155,7 @@ logcut journal api.service --lines 1000
 
 ## Reports and statistics
 
-A `slice` report has sections for deduplicated error bursts, surviving stack frames, and inlined source context; a `build` report has compiler root causes, cascade counts, and source context. Both send the human-readable report to **stdout**.
+A `slice` report has sections for deduplicated error bursts, surviving stack frames, and inlined source context (or structured NDJSON entries with breadcrumbs); a `test` report has failures with source snippets; a `build` report has compiler root causes, cascade counts, and source context. All send the human-readable report to **stdout**.
 
 With `--stats`, a single JSON line goes to **stderr**:
 
@@ -153,7 +180,7 @@ This is deliberate: sliced logs are routinely pasted to an LLM. Note that redact
 
 File input is tailed by seeking backwards in 8 KiB chunks; the reader never seeks from the beginning or allocates the whole file. `tail_lines = 0` produces an empty slice. Container and journal sources apply their own line limits (2,000 and 1,000 by default) before slicing.
 
-`--max-chars` truncates **rendered text only**. Structured result fields (`frames`, `groups`, `errors`, `snippets`) are not truncated, so MCP clients and programmatic callers still receive the full structures; a CLI user sees a `… [truncated]` marker at the cut point. For `slice_build`, the 5,000-line tail applies **only to file input** — piped output and the MCP tool's `raw_text` are used as given. The `build` CLI has no `--raw-text` flag.
+`--max-chars` truncates **rendered text only**. Structured result fields (`frames`, `groups`, `json_entries`, `errors`, `snippets`, `failures`) are not truncated, so MCP clients and programmatic callers still receive the full structures; a CLI user sees a `… [truncated]` marker at the cut point. For `slice_build`, the 5,000-line tail applies **only to file input** — piped output and the MCP tool's `raw_text` are used as given. The `build` CLI has no `--raw-text` flag.
 
 ## Working with treecut
 

@@ -11,7 +11,7 @@ use logcut::core::{
     self,
     models::{
         SliceBuildArgs, SliceBuildReport, SliceContainerRequest, SliceLogRequest, SliceReport,
-        SliceServiceRequest,
+        SliceServiceRequest, SliceTestArgs, SliceTestReport, WatchRequest,
     },
 };
 
@@ -35,6 +35,10 @@ enum Commands {
     Slice(SliceArgs),
     /// Collapse compiler error cascades from a build log or piped output
     Build(BuildArgs),
+    /// Strip passing test lines and keep failures with source context
+    Test(TestArgs),
+    /// Run a command, stream its output, and save a crash report on failure
+    Watch(WatchCliArgs),
     /// Slice Docker container logs
     Docker(DockerArgs),
     /// Slice a systemd unit's journal
@@ -60,6 +64,38 @@ struct SliceArgs {
     context_lines: Option<usize>,
     #[arg(long)]
     include_vendor_frames: bool,
+    #[arg(long)]
+    max_chars: Option<usize>,
+    #[arg(long)]
+    min_level: Option<String>,
+    #[arg(long = "where")]
+    where_filters: Vec<String>,
+}
+
+#[derive(Args)]
+struct TestArgs {
+    file: Option<PathBuf>,
+    #[arg(long)]
+    raw_text: Option<String>,
+    #[arg(long, default_value = ".")]
+    workspace_root: String,
+    #[arg(long)]
+    tail_lines: Option<usize>,
+    #[arg(long)]
+    context_lines: Option<usize>,
+    #[arg(long)]
+    max_chars: Option<usize>,
+}
+
+#[derive(Args)]
+struct WatchCliArgs {
+    /// Command and arguments after `--`, never interpreted by a shell
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    command: Vec<String>,
+    #[arg(long, default_value = ".")]
+    workspace_root: String,
+    #[arg(long)]
+    ring_lines: Option<usize>,
     #[arg(long)]
     max_chars: Option<usize>,
 }
@@ -131,6 +167,14 @@ fn emit(report: SliceReport, show_stats: bool) -> Result<()> {
 }
 
 fn emit_build(report: SliceBuildReport, show_stats: bool) -> Result<()> {
+    if show_stats {
+        writeln!(io::stderr(), "{}", serde_json::to_string(&report.stats)?)?;
+    }
+    println!("{}", report.text);
+    Ok(())
+}
+
+fn emit_test(report: SliceTestReport, show_stats: bool) -> Result<()> {
     if show_stats {
         writeln!(io::stderr(), "{}", serde_json::to_string(&report.stats)?)?;
     }
@@ -244,8 +288,62 @@ async fn main() -> Result<()> {
                 context_lines: args.context_lines,
                 include_vendor_frames: Some(args.include_vendor_frames),
                 max_chars: args.max_chars,
+                min_level: args.min_level,
+                where_filters: args.where_filters,
             })?;
             emit(report, cli.stats)
+        }
+        Commands::Test(args) => {
+            let raw_text = if args.file.is_none() {
+                piped_stdin()?
+            } else {
+                None
+            };
+            let report = core::slice_test(SliceTestArgs {
+                path: args.file.map(|path| path.to_string_lossy().into_owned()),
+                raw_text: args.raw_text.or(raw_text),
+                workspace_root: Some(args.workspace_root),
+                tail_lines: args.tail_lines,
+                context_lines: args.context_lines,
+                max_chars: args.max_chars,
+            })?;
+            emit_test(report, cli.stats)
+        }
+        Commands::Watch(args) => {
+            let mut request = WatchRequest {
+                command: args.command,
+                workspace_root: args.workspace_root,
+                ..Default::default()
+            };
+            if let Some(ring_lines) = args.ring_lines {
+                request.ring_lines = ring_lines;
+            }
+            if let Some(max_chars) = args.max_chars {
+                request.max_chars = max_chars;
+            }
+            let mut sink = |is_stderr: bool, line: &str| {
+                if is_stderr {
+                    eprintln!("{line}");
+                } else {
+                    println!("{line}");
+                }
+            };
+            let report = core::watch::watch(request, Some(&mut sink)).await?;
+            if report.detected {
+                println!("{}", report.text);
+                writeln!(
+                    io::stderr(),
+                    "logcut watch: crash report saved to {}",
+                    report.path
+                )?;
+            } else {
+                writeln!(
+                    io::stderr(),
+                    "logcut watch: command exited {:?} without a detected crash",
+                    report.exit_code
+                )?;
+            }
+            Ok(())
         }
         Commands::Build(args) => {
             let raw_text = if args.file.is_none() {

@@ -14,7 +14,7 @@ The MCP-only build is available as `cargo build --no-default-features --features
 
 ## Tools
 
-All four tools accept typed arguments whose JSON schemas are generated from the same Rust structs used by the core library (`#[derive(..., schemars::JsonSchema)]`), so the published schema cannot drift from the implementation. Omitted optional fields use the defaults below.
+All tools accept typed arguments whose JSON schemas are generated from the same Rust structs used by the core library (`#[derive(..., schemars::JsonSchema)]`), so the published schema cannot drift from the implementation. Omitted optional fields use the defaults below.
 
 ### `slice_log`
 
@@ -29,8 +29,35 @@ Redacts, deduplicates, and slices a log file, piped text, or raw log string.
 | `context_lines` | `3` | Source lines on each side of a crashing frame. |
 | `include_vendor_frames` | `false` | Keep vendor frames instead of collapsing consecutive runs. |
 | `max_chars` | `12000` | Truncate the rendered text. |
+| `min_level` | none | NDJSON only: keep entries at or above this severity. |
+| `where_filters` | `[]` | NDJSON only: filters such as `status>=500` or `service=auth`. |
 
-Result: `SliceReport` with `text` (rendered report), `stats`, `frames`, `groups`, and `snippets`.
+Result: `SliceReport` with `text` (rendered report), `stats`, `frames`, `groups`, `snippets`, and `json_entries` (normalized NDJSON entries with breadcrumbs).
+
+### `slice_test`
+
+Strips passing test lines and keeps failures with source context.
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `path` | none | Test-output file, tailed from the end. |
+| `raw_text` | none | Test-output text supplied directly. |
+| `workspace_root` | `"."` | Root for resolving failure `path:line` spans. |
+| `tail_lines` | `5000` | File input only. |
+| `context_lines` | `3` | Source lines on each side of a failure. |
+| `max_chars` | `12000` | Truncate the rendered text. |
+
+Result: `SliceTestReport` with `text`, `stats`, `failures`, and `passing_lines_stripped`.
+
+### `get_last_crash`
+
+Reads the markdown report written by `logcut watch`.
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `workspace_root` | `"."` | Workspace containing `.logcut/last-crash.md`. |
+
+Result: the report text as a JSON string. If no crash has been recorded, the tool returns an error telling the caller to run `logcut watch`.
 
 ### `slice_build`
 
@@ -79,7 +106,7 @@ Result: `SliceReport`.
 
 - **Redaction** runs before rendering and again over the final rendered text: Bearer tokens, `sk-`/`rk-`, GitHub and AWS keys, credential-bearing database URLs, and common `api_key`/`password`/`secret` assignments become `<REDACTED>`. Redaction applies to `text`; structured `snippets` are raw source lines and are not redacted, so avoid sharing that field when source files contain credentials.
 - For `slice_log`, source context is resolved only for application frames, against `workspace_root`; missing or unreadable files simply yield no snippet rather than an error. `slice_build` resolves a snippet for each reported compiler error.
-- **`max_chars` truncates `text` only.** Structured fields (`frames`, `groups`, `errors`, `snippets`) are returned in full, and `stats` reports the rendered size.
+- **`max_chars` truncates `text` only.** Structured fields (`frames`, `groups`, `json_entries`, `failures`, `errors`, `snippets`) are returned in full, and `stats` reports the rendered size.
 
 ### `tools/list` example
 
@@ -92,6 +119,8 @@ The response contains a `result.tools` array; abbreviated:
 ```json
 {"jsonrpc":"2.0","id":2,"result":{"tools":[
   {"name":"slice_log","description":"Redact, deduplicate and slice a log file, piped text, or raw log string","inputSchema":{}},
+  {"name":"slice_test","description":"Strip passing test lines and slice failing tests with source context","inputSchema":{}},
+  {"name":"get_last_crash","description":"Read the last crash report saved by `logcut watch`","inputSchema":{}},
   {"name":"slice_build","description":"Collapse compiler error cascades into root causes with source context","inputSchema":{}},
   {"name":"slice_container","description":"Slice Docker container logs with the logcut engine","inputSchema":{}},
   {"name":"slice_service","description":"Slice a systemd unit's journal with the logcut engine","inputSchema":{}}

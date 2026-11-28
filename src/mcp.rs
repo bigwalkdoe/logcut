@@ -1,5 +1,7 @@
 //! MCP stdio server: JSON-RPC on stdout, diagnostics only on stderr.
 
+use std::path::Path;
+
 use rmcp::{
     Json, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -10,8 +12,8 @@ use rmcp::{
 use crate::core::{
     self,
     models::{
-        SliceBuildArgs, SliceBuildReport, SliceContainerRequest, SliceLogRequest, SliceReport,
-        SliceServiceRequest,
+        LastCrashRequest, SliceBuildArgs, SliceBuildReport, SliceContainerRequest, SliceLogRequest,
+        SliceReport, SliceServiceRequest, SliceTestArgs, SliceTestReport,
     },
 };
 
@@ -46,6 +48,33 @@ impl LogcutServer {
         Parameters(request): Parameters<SliceLogRequest>,
     ) -> Result<Json<SliceReport>, String> {
         core::slice_log(request)
+            .map(Json)
+            .map_err(|error| error.to_string())
+    }
+
+    #[tool(
+        name = "slice_test",
+        description = "Strip passing test lines and slice failing tests with source context"
+    )]
+    async fn slice_test(
+        &self,
+        Parameters(request): Parameters<SliceTestArgs>,
+    ) -> Result<Json<SliceTestReport>, String> {
+        core::slice_test(request)
+            .map(Json)
+            .map_err(|error| error.to_string())
+    }
+
+    #[tool(
+        name = "get_last_crash",
+        description = "Read the last crash report saved by `logcut watch`"
+    )]
+    async fn get_last_crash(
+        &self,
+        Parameters(request): Parameters<LastCrashRequest>,
+    ) -> Result<Json<String>, String> {
+        let root = request.workspace_root.as_deref().unwrap_or(".");
+        core::watch::read_last_crash(Path::new(root))
             .map(Json)
             .map_err(|error| error.to_string())
     }
