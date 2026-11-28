@@ -20,6 +20,40 @@ Paths with Windows separators or `file:///` prefixes are normalized before looku
 
 **Fix.** Remove the zero value or raise it. File readers also return an empty string for an empty file. `slice_build` applies `--tail-lines` only to file input; raw text and stdin are used as given, so an empty report there means the input had no recognized diagnostics.
 
+## Invalid `--min-level` or `min_level`
+
+**Cause.** The caller supplied a severity name outside the accepted set. Validation happens in the core before input is read, so the CLI, MCP tool, and direct library callers all fail the same way. Log lines with unknown levels are still treated as `INFO`; only caller-supplied `min_level` values are strict.
+
+**Fix.** Use one of `trace`, `debug`, `info`, `warn`, `warning`, `error`, or `fatal` (case-insensitive):
+
+```bash
+logcut slice app.jsonl --min-level warn
+```
+
+For MCP, send `"min_level": "warn"` (or omit the field). The error lists the accepted values.
+
+## Malformed `--where` or `where_filters`
+
+**Cause.** A filter must contain a recognized operator (`=`, `!=`, `>`, `>=`, `<`, `<=`) with a field name and value. The parser commits to the first operator it finds, so strings such as `status>= ` are rejected rather than interpreted as a comparison against `"="`.
+
+**Fix.** Quote values that contain shell metacharacters and use a complete comparison:
+
+```bash
+logcut slice app.jsonl --where 'status>=500' --where 'service=auth'
+```
+
+For MCP, pass complete strings in `where_filters`. Values are compared case-sensitively, so `level=error` does not match `ERROR`.
+
+## `--ring-lines 0` is rejected
+
+**Cause.** `logcut watch` needs a non-empty ring buffer to slice a crash. A zero value is an explicit configuration error; it is not silently replaced with the default 500.
+
+**Fix.** Omit `--ring-lines` for the default, or choose a positive value:
+
+```bash
+logcut watch --ring-lines 1000 -- cargo test
+```
+
 ## The report ends with `… [truncated]`
 
 **Cause.** `--max-chars` / `max_chars` (default 12,000) limits the rendered text. Truncation happens on a UTF-8 character boundary and adds a marker.

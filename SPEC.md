@@ -4,7 +4,7 @@
 Build **`logcut`**, a high-speed, local-first Rust developer tool for **Stacktrace, Runtime Log & Compiler Error Slicing**.
 `logcut` compiles into a single unified binary that operates in two modes over one shared, pure-Rust core engine:
 1. **MCP Server Mode (`logcut mcp`)**: Exposes structured stacktrace extraction, compiler error cascade slicing, error burst deduplication, and Docker/systemd log slicing over `stdio` JSON-RPC 2.0 for AI coding hosts (OpenCode, Claude Code, Cursor).
-2. **Agentic & Pipeline CLI Mode (`logcut slice` / `logcut build` / `logcut docker` / `logcut journal` / `logcut ask`)**: Accepts piped command output (`cargo test 2>&1 | logcut slice`, `cargo build 2>&1 | logcut build`), log files, or container names, compressing thousands of noisy lines into a surgical diagnostic report.
+2. **Agentic & Pipeline CLI Mode (`logcut slice` / `logcut build` / `logcut test` / `logcut watch` / `logcut docker` / `logcut journal` / `logcut ask`)**: Accepts piped command output (`cargo test 2>&1 | logcut slice`, `cargo build 2>&1 | logcut build`), log files, test output, watched commands, or container names, compressing thousands of noisy lines into a surgical diagnostic report.
 
 ---
 
@@ -32,7 +32,7 @@ logcut/
 ├── .github/workflows/ci.yml     # fmt, clippy, tests, MCP-only build, cross-OS release artifacts
 ├── docs/superpowers/plans/      # Implementation plans
 ├── src/
-│   ├── main.rs                  # CLI router (`slice`, `build`, `docker`, `journal`, `ask`, `mcp`, `init`)
+│   ├── main.rs                  # CLI router (`slice`, `build`, `test`, `watch`, `docker`, `journal`, `ask`, `mcp`, `init`)
 │   ├── lib.rs                   # Re-exports `core` for integration tests
 │   ├── core/
 │   │   ├── mod.rs               # Public API facade
@@ -40,9 +40,12 @@ logcut/
 │   │   ├── compiler.rs          # Multi-compiler diagnostic parser & cascade deduplication
 │   │   ├── redactor.rs          # Regex-based secret/credential scrubber
 │   │   ├── dedup.rs             # Error clustering & template normalization (timestamps, UUIDs, pointers)
+│   │   ├── json_log.rs          # NDJSON detection, severity/filter validation, and breadcrumb correlation
 │   │   ├── stacktrace.rs        # Multi-language panic/traceback parser & vendor-frame filter
 │   │   ├── source_ctx.rs        # Maps surviving app frames (`path:line`) to real source code snippets
-│   │   └── sources.rs           # Safe readers for files, raw text, Docker CLI, & journalctl
+│   │   ├── sources.rs           # Safe readers for files, raw text, Docker CLI, & journalctl
+│   │   ├── test_runner.rs       # Test-output failure slicing with source context
+│   │   └── watch.rs             # Bounded crash watching and `.logcut/` report persistence
 │   ├── mcp.rs                   # rmcp stdio server exposing core tools
 │   └── agent.rs                 # OpenAI-compatible ReAct CLI loop
 └── tests/
@@ -57,7 +60,7 @@ logcut/
 ```toml
 [package]
 name = "logcut"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Local-first stacktrace, runtime log & compiler error slicing for AI coding agents and terminal pipelines"
 license = "MIT OR Apache-2.0"
@@ -109,8 +112,8 @@ Parse stack frames, classify each frame as **`AppFrame`** (inside workspace root
 
 ### Exposed MCP & CLI Tools
 1. **`slice_log` (`logcut slice [FILE]` or piped `stdin`)**:
-   * **Args**: `path: Option<String>`, `raw_text: Option<String>`, `workspace_root: Option<String>` (default `"."`), `tail_lines: Option<usize>` (default `Some(5000)`), `context_lines: Option<usize>` (default `Some(3)`), `include_vendor_frames: Option<bool>` (default `Some(false)`), `max_chars: Option<usize>` (default `Some(12000)`).
-   * **Behavior**: Scrubs secrets, deduplicates repeated log bursts, extracts stacktraces, collapses vendor frames, and resolves surviving `AppFrame` file paths against `workspace_root` to inline the exact crashing lines (`context_lines` above/below). Includes `SliceStats` (`raw_bytes`, `sliced_bytes`, `estimated_tokens_saved`, `reduction_percent`).
+   * **Args**: `path: Option<String>`, `raw_text: Option<String>`, `workspace_root: Option<String>` (default `"."`), `tail_lines: Option<usize>` (default `Some(5000)`), `context_lines: Option<usize>` (default `Some(3)`), `include_vendor_frames: Option<bool>` (default `Some(false)`), `max_chars: Option<usize>` (default `Some(12000)`), `min_level: Option<String>` (accepted: `trace`, `debug`, `info`, `warn`, `warning`, `error`, `fatal`), `where_filters: Vec<String>` (structured comparisons such as `status>=500` or `service=auth`).
+   * **Behavior**: Validates caller-supplied `min_level` and `where_filters` before reading input. Scrubs secrets, deduplicates repeated log bursts, detects NDJSON streams, filters/correlates structured entries, extracts stacktraces, collapses vendor frames, and resolves surviving `AppFrame` file paths against `workspace_root` to inline the exact crashing lines (`context_lines` above/below). Includes `SliceStats` (`raw_bytes`, `sliced_bytes`, `estimated_tokens_saved`, `reduction_percent`) and, for NDJSON input, `json_entries`.
 2. **`slice_build` (`logcut build [FILE]` or piped `stdin`)**:
    * **Args**: `path: Option<String>`, `raw_text: Option<String>`, `workspace_root: Option<String>` (default `"."`), `tail_lines: Option<usize>` (default `Some(5000)`), `max_errors: Option<usize>` (default `Some(10)`), `context_lines: Option<usize>` (default `Some(3)`), `max_chars: Option<usize>` (default `Some(12000)`).
    * **Behavior**: Reads a build log from a bounded tail, scrubs secrets, parses `rustc`/`cargo`, `tsc`, `go build`, and `gcc`/`clang` diagnostics, merges repeated cascades into root causes with occurrence counts, and resolves `path:line` spans against `workspace_root` for source snippets. Returns `SliceBuildReport` with `errors: Vec<CompilerError>`, `snippets`, `cascading_suppressed`, and `SliceStats`.
@@ -120,7 +123,13 @@ Parse stack frames, classify each frame as **`AppFrame`** (inside workspace root
 4. **`slice_service` (`logcut journal <UNIT>`)**:
    * **Args**: `unit: String`, `lines: Option<usize>` (default `Some(1000)`), `workspace_root: Option<String>`, `max_chars: Option<usize>`.
    * **Behavior**: Executes `journalctl -u <unit> -n <lines> --no-pager` safely and pipes output through `slice_log`.
-5. **`init` (`logcut init --opencode / --claude / --cursor / --all`)**:
+5. **`slice_test` (`logcut test [FILE]` or piped `stdin`)**:
+   * **Args**: `path: Option<String>`, `raw_text: Option<String>`, `workspace_root: Option<String>` (default `"."`), `tail_lines: Option<usize>` (default `Some(5000)`), `context_lines: Option<usize>` (default `Some(3)`), `max_chars: Option<usize>` (default `Some(12000)`).
+   * **Behavior**: Strips passing test lines, keeps failing tests with resolved source snippets, and returns `SliceTestReport` with `failures`, `passing_lines_stripped`, and `SliceStats`. `logcut test --raw-text` uses inline text without reading stdin.
+6. **`get_last_crash` (`logcut watch` companion)**:
+   * **Args**: `workspace_root: Option<String>` (default `"."`).
+   * **Behavior**: Reads the most recent crash report written by `logcut watch` under `.logcut/`. `logcut watch -- <COMMAND> [ARGS...]` streams bounded output (default 500 ring lines), rejects `--ring-lines 0`, and writes the slice plus an atomic `.gitignore` on failure.
+7. **`init` (`logcut init --opencode / --claude / --cursor / --all`)**:
    * Generates MCP config entries and `/debug-log` slash commands for OpenCode, Claude Code, and Cursor.
 
 ---
@@ -140,3 +149,6 @@ Parse stack frames, classify each frame as **`AppFrame`** (inside workspace root
 5. **Phase 5 — Compiler Error Slicing, CI & Release Automation** (delivered in v0.2.0):
    * Add `src/core/compiler.rs` with `rustc`/`tsc`/`go`/`clang` parsers and cascade deduplication, fixtures, and integration tests.
    * Expose `slice_build` through MCP, the agent loop, and `logcut build [FILE]`; add `.github/workflows/ci.yml` for cross-OS checks and tagged releases.
+6. **Phase 6 — Structured Logs, Test Slicing & Crash Watch** (delivered in v0.3.0):
+   * Add `src/core/json_log.rs`, `src/core/test_runner.rs`, and `src/core/watch.rs`; expose `slice_test` and `get_last_crash` through MCP and add the `logcut test` and `logcut watch` CLI commands.
+   * Validate `min_level` and `where_filters` in the core, reject `--ring-lines 0`, keep MCP stdout JSON-RPC-only, and write `.logcut/` crash artifacts atomically.

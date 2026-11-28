@@ -10,7 +10,7 @@ cargo install logcut
 cargo build --release && ./target/release/logcut --help
 ```
 
-Prebuilt archives for Linux x86_64, macOS x86_64/aarch64, and Windows x86_64 are attached to the [v0.2.0 release](https://github.com/bigwalkdoe/logcut/releases/tag/v0.2.0), each with a `.sha256` checksum.
+Prebuilt archives for Linux x86_64, macOS x86_64/aarch64, and Windows x86_64 are attached to the [v0.3.0 release](https://github.com/bigwalkdoe/logcut/releases/tag/v0.3.0), each with a `.sha256` checksum.
 
 | Feature | Default | Provides |
 | --- | --- | --- |
@@ -40,6 +40,8 @@ logcut build compiler.log
 
 The MCP `slice_build` tool does accept a `raw_text` field; see the [MCP reference](mcp.md#slice_build).
 
+`logcut test` accepts a file path, `--raw-text`, or piped stdin. `--raw-text` bypasses stdin, so inline test output never blocks on a pipe; if both a file and `--raw-text` are supplied, the file takes precedence.
+
 `logcut docker <CONTAINER>` calls `docker logs`; `logcut journal <UNIT>` calls `journalctl`. Both pass arguments as an explicit array — container and unit names are never interpreted by a shell — and the resulting output goes through the same slicer as piped text.
 
 ## Commands and flags
@@ -68,7 +70,7 @@ NDJSON input is detected automatically when at least half of the non-empty lines
 | --- | --- | --- |
 | `--raw-text <TEXT>` | none | Slice literal test output instead of a file or stdin. |
 | `--workspace-root <DIR>` | `.` | Root used to resolve failure `path:line` spans to source snippets. |
-| `--tail-lines <N>` | `5000` | Keep at most the last N lines when reading a file. |
+| `--tail-lines <N>` | `5000` | Keep at most the last N lines. |
 | `--context-lines <N>` | `3` | Source lines on each side of a failure. |
 | `--max-chars <N>` | `12000` | Truncate the rendered report text. |
 | `--stats` | off | Write JSON size/token statistics to stderr. |
@@ -151,6 +153,19 @@ cargo build 2>&1 | logcut build --max-errors 10 --stats
 # 4. Inspect a container and a systemd unit.
 logcut docker my-api --since 1h --tail-lines 2000
 logcut journal api.service --lines 1000
+```
+
+## v0.3.0 examples
+
+```bash
+# Filter structured NDJSON logs by severity and field value.
+logcut slice app.jsonl --min-level warn --where 'status>=500'
+
+# Keep only failing tests from a cargo run.
+cargo test 2>&1 | logcut test
+
+# Watch a command and save a crash report only when it fails.
+logcut watch -- cargo test
 ```
 
 ## Reports and statistics

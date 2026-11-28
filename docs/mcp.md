@@ -25,14 +25,14 @@ Redacts, deduplicates, and slices a log file, piped text, or raw log string.
 | `path` | none | File to read from the end. Mutually exclusive with `raw_text`. |
 | `raw_text` | none | Log text supplied directly. |
 | `workspace_root` | `"."` | Root for app-frame classification and `path:line` snippet lookup. |
-| `tail_lines` | `5000` | Maximum lines retained from file or raw text. |
+| `tail_lines` | `5000` | File or raw text; raw text is tailed. |
 | `context_lines` | `3` | Source lines on each side of a crashing frame. |
 | `include_vendor_frames` | `false` | Keep vendor frames instead of collapsing consecutive runs. |
 | `max_chars` | `12000` | Truncate the rendered text. |
-| `min_level` | none | NDJSON only: keep entries at or above this severity. |
+| `min_level` | none | NDJSON only: keep entries at or above `trace`, `debug`, `info`, `warn` (`warning`), `error`, or `fatal`. |
 | `where_filters` | `[]` | NDJSON only: filters such as `status>=500` or `service=auth`. |
 
-Invalid `min_level` values and malformed `where_filters` are rejected with a tool error.
+Invalid `min_level` values and malformed `where_filters` are rejected with a tool error. `min_level` names are case-insensitive; `where_filters` values are compared case-sensitively against the stored field, so `level=error` does not match `ERROR`.
 
 Result: `SliceReport` with `text` (rendered report), `stats`, `frames`, `groups`, `snippets`, and `json_entries` (normalized NDJSON entries with breadcrumbs).
 
@@ -45,7 +45,7 @@ Strips passing test lines and keeps failures with source context.
 | `path` | none | Test-output file, tailed from the end. |
 | `raw_text` | none | Test-output text supplied directly. |
 | `workspace_root` | `"."` | Root for resolving failure `path:line` spans. |
-| `tail_lines` | `5000` | File input only. |
+| `tail_lines` | `5000` | File or raw text; raw text is tailed. |
 | `context_lines` | `3` | Source lines on each side of a failure. |
 | `max_chars` | `12000` | Truncate the rendered text. |
 

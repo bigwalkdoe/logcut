@@ -5,7 +5,7 @@
 ## Guides
 
 - [Usage guide](usage.md) — every CLI command and flag, input source, default, worked example, and what the report contains.
-- [MCP and agent reference](mcp.md) — starting the stdio server, the four tool contracts, host configuration via `logcut init`, and `logcut ask`.
+- [MCP and agent reference](mcp.md) — starting the stdio server, the six MCP tools and four agent tools, host configuration via `logcut init`, and `logcut ask`.
 - [Architecture guide](architecture.md) — module responsibilities, data flow, hard invariants, feature flags, and where to extend the code.
 - [Troubleshooting](troubleshooting.md) — symptom-first fixes for empty reports, missing snippets, redaction, source readers, and feature gates.
 

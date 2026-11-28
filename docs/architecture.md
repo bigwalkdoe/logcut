@@ -11,8 +11,8 @@ Agent (src/agent.rs) ┘
 ```
 
 - **`src/main.rs`** parses CLI arguments and renders reports. It owns all stdout writes for CLI commands and routes diagnostics to stderr.
-- **`src/mcp.rs`** registers six tools (`slice_log`, `slice_test`, `slice_build`, `slice_container`, `slice_service`, `get_last_crash`) and serves JSON-RPC 2.0 over stdio. Only protocol messages reach stdout.
-- **`src/agent.rs`** runs an OpenAI-compatible ReAct loop. Tool definitions are generated from the same parameter structs used by MCP, so the agent cannot call a different schema than an MCP client.
+- **`src/mcp.rs`** registers six MCP tools (`slice_log`, `slice_test`, `slice_build`, `slice_container`, `slice_service`, `get_last_crash`) and serves JSON-RPC 2.0 over stdio. Only protocol messages reach stdout.
+- **`src/agent.rs`** runs an OpenAI-compatible ReAct loop with four agent tools (`slice_log`, `slice_build`, `slice_container`, `slice_service`). Tool definitions are generated from the same parameter structs used by MCP, so the agent cannot call a different schema than an MCP client.
 
 None of these transports contains slicing logic. They construct typed request structs, call a core function, and present the result.
 
@@ -30,7 +30,7 @@ None of these transports contains slicing logic. They construct typed request st
 | `watch.rs` | Streams a child command into a bounded ring buffer, detects crashes, and atomically writes `.logcut/last-crash.md`; printing is injected by the CLI sink. |
 | `source_ctx.rs` | Maps surviving `path:line` frames to real source lines using a bounded `BufReader` and normalizes absolute paths against `workspace_root`. |
 | `sources.rs` | Bounded reverse-seek tail reader for files, tail for in-memory text, and safe Docker/journal readers that spawn commands with argument arrays (no shell). |
-| `mod.rs` | Public facade: `slice_log`, `slice_test`, `slice_build`, `slice_container`, and `slice_service`. |
+| `mod.rs` | Public facade: `slice_log`, `slice_test`, `slice_build`, `slice_container`, `slice_service`, and the `watch` module (`watch`, `read_last_crash`). |
 
 ## Data flow
 
