@@ -60,10 +60,16 @@ pub fn severity(level: &str) -> u8 {
 
 /// Parse, filter and correlate NDJSON lines into normalized entries.
 pub fn slice(text: &str, min_level: Option<&str>, where_filters: &[String]) -> Vec<JsonLogEntry> {
+    // Once a stream is classified as NDJSON, still preserve non-JSON lines as
+    // INFO context. Dropping half a mixed stream would lose diagnostics.
     let all: Vec<JsonLogEntry> = text
         .lines()
-        .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
-        .filter_map(|value| parse_entry(&value))
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter_map(|line| match serde_json::from_str::<Value>(line) {
+            Ok(value) => parse_entry(&value).or_else(|| Some(plain_entry(line))),
+            Err(_) => Some(plain_entry(line)),
+        })
         .collect();
     let min_severity = min_level.map(severity);
 
@@ -135,6 +141,20 @@ fn push_heading(out: &mut String, timestamp: Option<&str>, level: &str, message:
     out.push_str(&redact(message));
 }
 
+fn plain_entry(line: &str) -> JsonLogEntry {
+    JsonLogEntry {
+        timestamp: None,
+        level: "INFO".to_owned(),
+        message: redact(line),
+        error: None,
+        stack: None,
+        trace_id: None,
+        request_id: None,
+        fields: BTreeMap::new(),
+        breadcrumbs: Vec::new(),
+    }
+}
+
 fn parse_entry(value: &Value) -> Option<JsonLogEntry> {
     let object = value.as_object()?;
     let timestamp = string_field(object, "timestamp");
@@ -152,7 +172,7 @@ fn parse_entry(value: &Value) -> Option<JsonLogEntry> {
     let fields = object
         .iter()
         .filter(|(key, _)| !reserved.contains(key.as_str()))
-        .map(|(key, value)| (redact(key), redact(&stringify(value))))
+        .map(|(key, value)| (redact(key), redact(&stringify(&without_metadata(value)))))
         .collect::<BTreeMap<_, _>>();
 
     Some(JsonLogEntry {
@@ -179,6 +199,22 @@ fn stringify(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),
         _ => value.to_string(),
+    }
+}
+
+/// Remove static host/process metadata from nested objects and arrays before
+/// they are stringified into a report field.
+fn without_metadata(value: &Value) -> Value {
+    match value {
+        Value::Object(object) => Value::Object(
+            object
+                .iter()
+                .filter(|(key, _)| !METADATA_KEYS.contains(&key.as_str()))
+                .map(|(key, nested)| (key.clone(), without_metadata(nested)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(without_metadata).collect()),
+        other => other.clone(),
     }
 }
 
@@ -390,6 +426,42 @@ mod tests {
         let output = render(&slice(text, None, &[]));
         assert!(output.contains("Bearer <REDACTED>"));
         assert!(!output.contains("abcdefghijklmnopqrstuvwxyz"));
+    }
+
+    #[test]
+    fn structured_stream_keeps_plain_context_lines() {
+        let text = [
+            r#"{"level":"info","message":"structured one"}"#,
+            "plain context line",
+            r#"{"level":"error","message":"structured failure"}"#,
+            "plain shutdown line",
+        ]
+        .join("\n");
+
+        assert!(is_ndjson(&text));
+        let entries = slice(&text, None, &[]);
+        assert_eq!(entries.len(), 4, "{entries:?}");
+        assert_eq!(entries[1].message, "plain context line");
+        assert_eq!(entries[1].level, "INFO");
+        assert!(render(&entries).contains("plain context line"));
+        assert!(render(&entries).contains("plain shutdown line"));
+    }
+
+    #[test]
+    fn nested_metadata_is_stripped_recursively() {
+        let text = r#"{"level":"error","message":"boom","meta":{"pid":42,"hostname":"worker-1","v":3,"service":"auth","nested":{"pid":7,"region":"eu"}}}"#;
+        let entries = slice(text, None, &[]);
+        let output = render(&entries);
+
+        assert!(output.contains("\"service\":\"auth\""), "{output}");
+        assert!(output.contains("\"region\":\"eu\""), "{output}");
+        for leaked in ["pid", "hostname", "worker-1", "v=3", "v\":3"] {
+            assert!(!output.contains(leaked), "leaked {leaked:?}: {output}");
+        }
+        let fields = serde_json::to_string(&entries[0].fields).unwrap();
+        for leaked in ["pid", "hostname", "worker-1", "\"v\":3"] {
+            assert!(!fields.contains(leaked), "leaked {leaked:?}: {fields}");
+        }
     }
 
     #[test]

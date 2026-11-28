@@ -60,7 +60,7 @@ The MCP `slice_build` tool does accept a `raw_text` field; see the [MCP referenc
 | `--where <FILTER>` | none | Repeatable NDJSON filter such as `status>=500` or `service=auth`; supports `=`, `!=`, `>`, `>=`, `<`, `<=`. |
 | `--stats` | off | Write JSON size/token statistics to stderr. |
 
-NDJSON input is detected automatically when most non-empty lines are JSON objects with `level` or `message`. Static `pid`, `hostname`, and `v` fields are dropped, secrets are redacted, and errors with a `trace_id` or `request_id` carry up to five earlier `INFO`/`WARN` breadcrumbs from the same request.
+NDJSON input is detected automatically when at least half of the non-empty lines are JSON objects with `level` or `message`. Static `pid`, `hostname`, and `v` fields are dropped from nested objects too, secrets are redacted, non-JSON lines are kept as `INFO` context, and errors with a `trace_id` or `request_id` carry up to five earlier `INFO`/`WARN` breadcrumbs from the same request.
 
 ### `logcut test [FILE]`
 

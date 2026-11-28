@@ -164,11 +164,13 @@ pub fn parse_failures(text: &str, root: &Path, context_lines: usize) -> Vec<Test
     let mut current: Vec<&str> = Vec::new();
 
     for line in text.split('\n') {
-        if line.trim().is_empty() {
-            if !current.is_empty() {
-                blocks.push(current.join("\n"));
-                current.clear();
-            }
+        // A named failure header starts a new block; blank lines and
+        // continuation lines (including assertion diffs) stay with it.
+        if starts_named_failure(line) && !current.is_empty() {
+            blocks.push(current.join("\n"));
+            current.clear();
+        }
+        if current.is_empty() && !starts_failure(line) {
             continue;
         }
         current.push(line);
@@ -179,12 +181,9 @@ pub fn parse_failures(text: &str, root: &Path, context_lines: usize) -> Vec<Test
 
     blocks
         .into_iter()
-        .filter_map(|block| {
+        .filter(|block| has_failure_marker(block))
+        .map(|block| {
             let clean = strip_ansi(&block);
-            if !FAILURE_MARKERS.iter().any(|marker| clean.contains(marker)) {
-                return None;
-            }
-
             let name = extract_name(&clean);
             let (location, snippet) = match extract_frame(&clean) {
                 Some((location, frame)) => {
@@ -194,14 +193,35 @@ pub fn parse_failures(text: &str, root: &Path, context_lines: usize) -> Vec<Test
                 None => (None, None),
             };
 
-            Some(TestFailure {
+            TestFailure {
                 name,
                 location,
                 message: block,
                 snippet,
-            })
+            }
         })
         .collect()
+}
+
+fn starts_named_failure(line: &str) -> bool {
+    let clean = strip_ansi(line);
+    clean.starts_with("--- FAIL:")
+        || clean.starts_with("test result: FAILED")
+        || CARGO_FAIL.is_match(&clean)
+        || clean.starts_with("FAILED ")
+        || clean.starts_with("FAIL ")
+        || clean.starts_with("✗ ")
+        || clean.starts_with("✕ ")
+}
+
+fn starts_failure(line: &str) -> bool {
+    let clean = strip_ansi(line);
+    starts_named_failure(&clean) || FAILURE_MARKERS.iter().any(|marker| clean.contains(marker))
+}
+
+fn has_failure_marker(block: &str) -> bool {
+    let clean = strip_ansi(block);
+    FAILURE_MARKERS.iter().any(|marker| clean.contains(marker))
 }
 
 fn render(failures: &[TestFailure], passing_lines_stripped: usize) -> String {
@@ -407,6 +427,18 @@ mod tests {
         assert!(report.text.contains("  left: 1"));
         assert!(report.text.contains(" right: 2"));
         assert_eq!(report.failures.len(), 1);
+    }
+
+    #[test]
+    fn assertion_diffs_survive_blank_lines() {
+        let report = slice(args(
+            "test bad_case ... FAILED\n\nthread 'bad_case' panicked at src/lib.rs:3:5:\nassertion `left == right` failed\n\n  left: 1\n right: 2\n",
+        ))
+        .unwrap();
+
+        assert_eq!(report.failures.len(), 1, "{:?}", report.failures);
+        assert!(report.text.contains("  left: 1"), "{}", report.text);
+        assert!(report.text.contains(" right: 2"), "{}", report.text);
     }
 
     #[test]

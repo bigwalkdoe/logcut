@@ -25,7 +25,7 @@ None of these transports contains slicing logic. They construct typed request st
 | `dedup.rs` | Groups repeated lines after normalizing timestamps, UUIDs, pointers, request IDs, and durations into placeholders; produces `[xN | first: … | last: …]` bursts. |
 | `stacktrace.rs` | Parses Rust, Python, JS/TS, Go, and Java panics/tracebacks, classifies frames as app or vendor, and collapses consecutive vendor frames. |
 | `compiler.rs` | Parses `rustc`/`cargo`, `tsc`, `go build`, and `gcc`/`clang` diagnostics, merges cascades into root causes with occurrence counts, and reports `cascading_suppressed`. |
-| `json_log.rs` | Detects NDJSON, strips static metadata, applies `min_level`/`where_filters`, redacts fields, and correlates up to five breadcrumbs per error. |
+| `json_log.rs` | Detects NDJSON, strips static metadata recursively, keeps non-JSON lines as context, applies `min_level`/`where_filters`, redacts fields, and correlates up to five breadcrumbs per error. |
 | `test_runner.rs` | Strips passing test lines, preserves failure diffs, and resolves `file:line` failures to source snippets. |
 | `watch.rs` | Streams a child command into a bounded ring buffer, detects crashes, and atomically writes `.logcut/last-crash.md`; printing is injected by the CLI sink. |
 | `source_ctx.rs` | Maps surviving `path:line` frames to real source lines using a bounded `BufReader` and normalizes absolute paths against `workspace_root`. |
