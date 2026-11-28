@@ -166,7 +166,9 @@ pub async fn watch(
         ..Default::default()
     })?;
     let path = last_crash_path(Path::new(&request.workspace_root));
-    write_atomically(&request.workspace_root, &path, &sliced.text)?;
+    let dir = logcut_dir(&request.workspace_root)?;
+    write_file_atomically(&dir.join(".gitignore"), "*")?;
+    write_file_atomically(&path, &sliced.text)?;
 
     Ok(CrashReport {
         text: sliced.text,
@@ -177,17 +179,28 @@ pub async fn watch(
     })
 }
 
-/// Persist a crash report without ever leaving a partial file behind.
-fn write_atomically(workspace_root: &str, destination: &Path, text: &str) -> Result<()> {
+fn logcut_dir(workspace_root: &str) -> Result<PathBuf> {
     let dir = Path::new(workspace_root).join(".logcut");
-    std::fs::create_dir_all(&dir)?;
-    std::fs::write(dir.join(".gitignore"), "*")?;
+    std::fs::create_dir_all(&dir).with_context(|| format!("failed to create {}", dir.display()))?;
+    Ok(dir)
+}
 
+/// Persist a file without ever leaving a partial file behind.
+fn write_file_atomically(destination: &Path, text: &str) -> Result<()> {
+    let name = destination
+        .file_name()
+        .context("atomic write destination has no file name")?
+        .to_string_lossy();
+    let dir = destination
+        .parent()
+        .context("atomic write destination has no parent directory")?;
     let sequence = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let temp = dir.join(format!(
-        ".last-crash.md.tmp-{}-{sequence}",
-        std::process::id()
-    ));
+    let temp_name = if name.starts_with('.') {
+        format!("{name}.tmp-{}-{sequence}", std::process::id())
+    } else {
+        format!(".{name}.tmp-{}-{sequence}", std::process::id())
+    };
+    let temp = dir.join(temp_name);
 
     let result = (|| -> Result<()> {
         let mut file = std::fs::File::create(&temp)?;
@@ -206,8 +219,18 @@ fn write_atomically(workspace_root: &str, destination: &Path, text: &str) -> Res
 
 #[cfg(test)]
 mod tests {
-    use super::{last_crash_path, line_channel, read_last_crash, watch};
+    use super::{last_crash_path, line_channel, read_last_crash, watch, write_file_atomically};
     use crate::core::models::WatchRequest;
+
+    #[test]
+    fn atomic_writer_leaves_no_temp_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let destination = dir.path().join(".gitignore");
+        write_file_atomically(&destination, "*").unwrap();
+        assert_eq!(std::fs::read_to_string(&destination).unwrap(), "*");
+        let entries = std::fs::read_dir(dir.path()).unwrap().count();
+        assert_eq!(entries, 1, "unexpected files in {:?}", dir.path());
+    }
 
     #[tokio::test]
     async fn non_zero_exit_and_error_line_writes_report() {

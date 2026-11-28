@@ -56,8 +56,8 @@ The MCP `slice_build` tool does accept a `raw_text` field; see the [MCP referenc
 | `--context-lines <N>` | `3` | Lines of source context on each side of a crashing frame. |
 | `--include-vendor-frames` | off | Keep framework/runtime frames instead of collapsing consecutive runs. |
 | `--max-chars <N>` | `12000` | Truncate the rendered report text to roughly N characters. |
-| `--min-level <LEVEL>` | none | For NDJSON input, keep only entries at or above `trace`, `debug`, `info`, `warn`, or `error`. |
-| `--where <FILTER>` | none | Repeatable NDJSON filter such as `status>=500` or `service=auth`; supports `=`, `!=`, `>`, `>=`, `<`, `<=`. |
+| `--min-level <LEVEL>` | none | For NDJSON input, keep only entries at or above `trace`, `debug`, `info`, `warn` (`warning`), `error`, or `fatal`. Invalid levels fail with an error. |
+| `--where <FILTER>` | none | Repeatable NDJSON filter such as `status>=500` or `service=auth`; supports `=`, `!=`, `>`, `>=`, `<`, `<=`. Invalid filters fail with an error. |
 | `--stats` | off | Write JSON size/token statistics to stderr. |
 
 NDJSON input is detected automatically when at least half of the non-empty lines are JSON objects with `level` or `message`. Static `pid`, `hostname`, and `v` fields are dropped from nested objects too, secrets are redacted, non-JSON lines are kept as `INFO` context, and errors with a `trace_id` or `request_id` carry up to five earlier `INFO`/`WARN` breadcrumbs from the same request.
@@ -83,7 +83,7 @@ Passing lines from cargo (`... ok`), pytest (`PASSED`), jest/vitest (`✓`, `PAS
 | `--ring-lines <N>` | `500` | Maximum streamed lines kept for the crash slice. |
 | `--max-chars <N>` | `12000` | Truncate the saved crash report text. |
 
-Child stdout/stderr are streamed live. On a detected panic, traceback, `ERROR`/`FATAL` line, or non-zero exit, the buffered tail is sliced and written atomically to `<workspace>/.logcut/last-crash.md`; `.logcut/.gitignore` contains `*`.
+Child stdout/stderr are streamed live. On a detected panic, traceback, `ERROR`/`FATAL` line, or non-zero exit, the buffered tail is sliced and written atomically to `<workspace>/.logcut/last-crash.md`; `.logcut/.gitignore` contains `*` and is written through the same atomic temp-file+rename path.
 
 ### `logcut build [FILE]`
 

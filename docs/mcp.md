@@ -32,6 +32,8 @@ Redacts, deduplicates, and slices a log file, piped text, or raw log string.
 | `min_level` | none | NDJSON only: keep entries at or above this severity. |
 | `where_filters` | `[]` | NDJSON only: filters such as `status>=500` or `service=auth`. |
 
+Invalid `min_level` values and malformed `where_filters` are rejected with a tool error.
+
 Result: `SliceReport` with `text` (rendered report), `stats`, `frames`, `groups`, `snippets`, and `json_entries` (normalized NDJSON entries with breadcrumbs).
 
 ### `slice_test`

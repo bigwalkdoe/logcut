@@ -25,7 +25,7 @@ None of these transports contains slicing logic. They construct typed request st
 | `dedup.rs` | Groups repeated lines after normalizing timestamps, UUIDs, pointers, request IDs, and durations into placeholders; produces `[xN | first: … | last: …]` bursts. |
 | `stacktrace.rs` | Parses Rust, Python, JS/TS, Go, and Java panics/tracebacks, classifies frames as app or vendor, and collapses consecutive vendor frames. |
 | `compiler.rs` | Parses `rustc`/`cargo`, `tsc`, `go build`, and `gcc`/`clang` diagnostics, merges cascades into root causes with occurrence counts, and reports `cascading_suppressed`. |
-| `json_log.rs` | Detects NDJSON, strips static metadata recursively, keeps non-JSON lines as context, applies `min_level`/`where_filters`, redacts fields, and correlates up to five breadcrumbs per error. |
+| `json_log.rs` | Detects NDJSON, strips static metadata recursively, keeps non-JSON lines as context, validates and applies `min_level`/`where_filters`, redacts fields, and correlates up to five breadcrumbs per error. |
 | `test_runner.rs` | Strips passing test lines, preserves failure diffs, and resolves `file:line` failures to source snippets. |
 | `watch.rs` | Streams a child command into a bounded ring buffer, detects crashes, and atomically writes `.logcut/last-crash.md`; printing is injected by the CLI sink. |
 | `source_ctx.rs` | Maps surviving `path:line` frames to real source lines using a bounded `BufReader` and normalizes absolute paths against `workspace_root`. |
@@ -58,7 +58,7 @@ None of these transports contains slicing logic. They construct typed request st
 
 `slice_test` tails the input, redacts it, drops passing lines from cargo/pytest/jest/go output, groups the surviving failure blocks, resolves `path:line` references through `source_ctx`, and returns `SliceTestReport { text, stats, failures, passing_lines_stripped }`.
 
-`watch` spawns a command with an argument array, reads stdout and stderr concurrently into a bounded ring buffer, and lets the CLI inject a sink for live pass-through. On a crash marker or non-zero exit it slices the buffered tail with `slice_log` and atomically renames a temp file to `.logcut/last-crash.md`, also writing `.logcut/.gitignore` containing `*`. `get_last_crash` reads that file for MCP clients.
+`watch` spawns a command with an argument array, reads stdout and stderr concurrently into a bounded ring buffer, and lets the CLI inject a sink for live pass-through. On a crash marker or non-zero exit it slices the buffered tail with `slice_log` and publishes both `.logcut/last-crash.md` and `.logcut/.gitignore` (containing `*`) through the same atomic temp-file+rename helper. `get_last_crash` reads the report for MCP clients.
 
 Truncation always applies to rendered text only; structured fields are returned in full.
 

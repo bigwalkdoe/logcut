@@ -39,7 +39,7 @@ pub fn slice_log(request: SliceLogRequest) -> Result<SliceReport> {
             &redacted,
             request.min_level.as_deref(),
             &request.where_filters,
-        );
+        )?;
         let mut text = redactor::redact(&json_log::render(&entries));
         let max_chars = request.max_chars.unwrap_or(12_000);
         if text.len() > max_chars {

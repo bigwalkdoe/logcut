@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use anyhow::{Result, bail};
 use serde_json::{Map, Value};
 
 use crate::core::models::{JsonBreadcrumb, JsonLogEntry};
@@ -45,21 +46,50 @@ pub fn is_ndjson(text: &str) -> bool {
     structured > 0 && structured >= total.div_ceil(2)
 }
 
-/// Numeric severity used by `--min-level`; unknown levels are treated as info.
-pub fn severity(level: &str) -> u8 {
+/// Strict parser for caller-supplied severity values. Unknown log levels are
+/// deliberately not rejected here: `severity()` still defaults them to info.
+fn parse_level(level: &str) -> Option<u8> {
     match level.trim().to_ascii_lowercase().as_str() {
-        "trace" => 0,
-        "debug" => 1,
-        "info" => 2,
-        "warn" | "warning" => 3,
-        "error" => 4,
-        "fatal" => 5,
-        _ => 2,
+        "trace" => Some(0),
+        "debug" => Some(1),
+        "info" => Some(2),
+        "warn" | "warning" => Some(3),
+        "error" => Some(4),
+        "fatal" => Some(5),
+        _ => None,
     }
 }
 
+/// Numeric severity used by `--min-level`; unknown levels are treated as info.
+pub fn severity(level: &str) -> u8 {
+    parse_level(level).unwrap_or(2)
+}
+
 /// Parse, filter and correlate NDJSON lines into normalized entries.
-pub fn slice(text: &str, min_level: Option<&str>, where_filters: &[String]) -> Vec<JsonLogEntry> {
+pub fn slice(
+    text: &str,
+    min_level: Option<&str>,
+    where_filters: &[String],
+) -> Result<Vec<JsonLogEntry>> {
+    let min_severity = match min_level {
+        Some(level) => match parse_level(level) {
+            Some(value) => Some(value),
+            None => bail!(
+                "invalid min_level {level:?}; expected trace, debug, info, warn, error, or fatal"
+            ),
+        },
+        None => None,
+    };
+    let mut filters = Vec::with_capacity(where_filters.len());
+    for filter in where_filters {
+        match parse_filter(filter) {
+            Some(parsed) => filters.push(parsed),
+            None => bail!(
+                "invalid where filter {filter:?}; expected field=value, field!=value, field>value, field>=value, field<value, or field<=value"
+            ),
+        }
+    }
+
     // Once a stream is classified as NDJSON, still preserve non-JSON lines as
     // INFO context. Dropping half a mixed stream would lose diagnostics.
     let all: Vec<JsonLogEntry> = text
@@ -71,22 +101,22 @@ pub fn slice(text: &str, min_level: Option<&str>, where_filters: &[String]) -> V
             Err(_) => Some(plain_entry(line)),
         })
         .collect();
-    let min_severity = min_level.map(severity);
-
-    all.iter()
+    let entries: Vec<JsonLogEntry> = all
+        .iter()
         .enumerate()
         .filter(|(_, entry)| min_severity.is_none_or(|level| severity(&entry.level) >= level))
         .filter(|(_, entry)| {
-            where_filters
-                .iter()
-                .all(|filter| matches_filter(entry, filter))
+            filters.iter().all(|(field, operator, expected)| {
+                matches_filter(entry, field, *operator, expected)
+            })
         })
         .map(|(index, entry)| {
             let mut entry = entry.clone();
             entry.breadcrumbs = breadcrumbs_for(&all, index);
             entry
         })
-        .collect()
+        .collect();
+    Ok(entries)
 }
 
 /// Render entries as a compact, delimited section.
@@ -242,9 +272,10 @@ fn parse_filter(filter: &str) -> Option<(&str, Operator, &str)> {
     for (token, operator) in operators {
         if let Some((field, value)) = filter.split_once(token) {
             let field = field.trim();
-            if !field.is_empty() {
-                return Some((field, operator, value.trim()));
-            }
+            let value = value.trim();
+            // Commit to the first (longest) operator token. Falling through to
+            // a shorter one would parse `status>= ` as `status > "="`.
+            return (!field.is_empty() && !value.is_empty()).then_some((field, operator, value));
         }
     }
     None
@@ -263,10 +294,7 @@ fn field_value<'a>(entry: &'a JsonLogEntry, field: &str) -> Option<&'a str> {
     }
 }
 
-fn matches_filter(entry: &JsonLogEntry, filter: &str) -> bool {
-    let Some((field, operator, expected)) = parse_filter(filter) else {
-        return true;
-    };
+fn matches_filter(entry: &JsonLogEntry, field: &str, operator: Operator, expected: &str) -> bool {
     let Some(actual) = field_value(entry, field) else {
         return false;
     };
@@ -365,6 +393,25 @@ mod tests {
     }
 
     #[test]
+    fn unknown_min_level_is_rejected() {
+        let err = slice("{\"level\":\"info\",\"message\":\"x\"}", Some("loud"), &[]).unwrap_err();
+        assert!(err.to_string().contains("loud"), "{err:#}");
+    }
+
+    #[test]
+    fn malformed_where_filters_are_rejected() {
+        for filter in ["status", "=auth", "status=", "   ", "status>= "] {
+            let err = slice(
+                "{\"level\":\"info\",\"message\":\"x\"}",
+                None,
+                &[filter.to_owned()],
+            )
+            .unwrap_err();
+            assert!(err.to_string().contains(filter), "{err:#}");
+        }
+    }
+
+    #[test]
     fn min_level_warn_excludes_info() {
         let text = [
             r#"{"level":"INFO","message":"noise"}"#,
@@ -372,7 +419,7 @@ mod tests {
             r#"{"level":"ERROR","message":"broken"}"#,
         ]
         .join("\n");
-        let entries = slice(&text, Some("warn"), &[]);
+        let entries = slice(&text, Some("warn"), &[]).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(
             entries
@@ -390,7 +437,7 @@ mod tests {
             r#"{"level":"error","message":"client","status":499}"#,
         ]
         .join("\n");
-        let entries = slice(&text, None, &["status>=500".to_owned()]);
+        let entries = slice(&text, None, &["status>=500".to_owned()]).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].message, "edge");
     }
@@ -402,7 +449,7 @@ mod tests {
             r#"{"level":"info","message":"b","service":"billing"}"#,
         ]
         .join("\n");
-        let entries = slice(&text, None, &["service=auth".to_owned()]);
+        let entries = slice(&text, None, &["service=auth".to_owned()]).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].message, "a");
     }
@@ -410,7 +457,7 @@ mod tests {
     #[test]
     fn rendered_output_omits_static_metadata() {
         let text = r#"{"timestamp":"2026-11-28T00:00:00Z","level":"info","message":"ready","service":"api","pid":42,"hostname":"worker-1","v":3}"#;
-        let output = render(&slice(text, None, &[]));
+        let output = render(&slice(text, None, &[]).unwrap());
         assert!(output.starts_with("== Structured logs ==\n"));
         assert!(output.contains("2026-11-28T00:00:00Z INFO ready"));
         assert!(output.contains("service=api"));
@@ -423,7 +470,7 @@ mod tests {
     fn bearer_tokens_are_redacted() {
         let text =
             r#"{"level":"info","message":"Authorization: Bearer abcdefghijklmnopqrstuvwxyz"}"#;
-        let output = render(&slice(text, None, &[]));
+        let output = render(&slice(text, None, &[]).unwrap());
         assert!(output.contains("Bearer <REDACTED>"));
         assert!(!output.contains("abcdefghijklmnopqrstuvwxyz"));
     }
@@ -439,7 +486,7 @@ mod tests {
         .join("\n");
 
         assert!(is_ndjson(&text));
-        let entries = slice(&text, None, &[]);
+        let entries = slice(&text, None, &[]).unwrap();
         assert_eq!(entries.len(), 4, "{entries:?}");
         assert_eq!(entries[1].message, "plain context line");
         assert_eq!(entries[1].level, "INFO");
@@ -450,7 +497,7 @@ mod tests {
     #[test]
     fn nested_metadata_is_stripped_recursively() {
         let text = r#"{"level":"error","message":"boom","meta":{"pid":42,"hostname":"worker-1","v":3,"service":"auth","nested":{"pid":7,"region":"eu"}}}"#;
-        let entries = slice(text, None, &[]);
+        let entries = slice(text, None, &[]).unwrap();
         let output = render(&entries);
 
         assert!(output.contains("\"service\":\"auth\""), "{output}");
@@ -478,7 +525,7 @@ mod tests {
         );
         lines.push(r#"{"level":"INFO","message":"after","trace_id":"tr_1"}"#.to_owned());
 
-        let entries = slice(&lines.join("\n"), Some("error"), &[]);
+        let entries = slice(&lines.join("\n"), Some("error"), &[]).unwrap();
         assert_eq!(entries.len(), 1);
         let breadcrumbs = &entries[0].breadcrumbs;
         assert_eq!(breadcrumbs.len(), 5);
@@ -501,7 +548,7 @@ mod tests {
             .collect();
         lines.push(r#"{"level":"FATAL","message":"boom","request_id":"req_1"}"#.to_owned());
 
-        let entries = slice(&lines.join("\n"), Some("error"), &[]);
+        let entries = slice(&lines.join("\n"), Some("error"), &[]).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].breadcrumbs.len(), 5);
         assert_eq!(entries[0].breadcrumbs[4].message, "before-7");
